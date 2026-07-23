@@ -68,18 +68,56 @@ st.set_page_config(page_title=APP_TITLE, page_icon="💰", layout="wide")
 st.markdown(
     """
     <style>
-    .stApp {background: linear-gradient(135deg, #f7f9fc 0%, #eef2f7 100%); color: #111827;}
-    [data-testid="stSidebar"] {background: #111827;}
-    [data-testid="stSidebar"] * {color: #f9fafb !important;}
-    [data-testid="stMetric"] {background: white; padding: 18px; border-radius: 16px; border: 1px solid #e5e7eb; box-shadow: 0 5px 20px rgba(15,23,42,.05); min-height: 128px; overflow: visible;}
-    [data-testid="stMetricValue"] {font-size: clamp(1.35rem, 2.2vw, 2rem) !important; line-height: 1.2 !important; white-space: normal !important; overflow: visible !important; text-overflow: clip !important; word-break: break-word;}
-    [data-testid="stMetricLabel"] {white-space: normal !important; line-height: 1.25 !important;}
-    div[data-testid="stForm"] {background: white; padding: 18px; border-radius: 16px; border: 1px solid #e5e7eb;}
-    .block-container {padding-top: 1.5rem; padding-bottom: 2.5rem;}
-    .finance-title {font-size: 2rem; font-weight: 700; color: #111827; margin-bottom: .1rem;}
-    .finance-subtitle {color: #6b7280; margin-bottom: 1rem;}
-    .small-note {font-size:.85rem;color:#6b7280;}
-    .section-card {background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 4px 16px rgba(15,23,42,.04)}
+    :root { --top-safe-space: 4.75rem; }
+    html, body, [class*="css"] { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .stApp { background: linear-gradient(135deg, #f7f9fc 0%, #eef2f7 100%); color: #111827; }
+    [data-testid="stAppViewContainer"] > .main .block-container {
+        padding-top: var(--top-safe-space) !important;
+        padding-bottom: 3rem !important;
+        max-width: 1600px;
+    }
+    [data-testid="stSidebar"] { background: #111827; }
+    [data-testid="stSidebar"] * { color: #f9fafb !important; }
+    h1, h2, h3, h4, h5, h6, .finance-title, .finance-subtitle,
+    [data-testid="stMarkdownContainer"] p { overflow: visible !important; }
+    h1, h2, h3 { line-height: 1.35 !important; padding-top: .12em !important; }
+    .finance-title {
+        font-size: clamp(1.9rem, 3vw, 2.55rem); line-height: 1.35 !important;
+        font-weight: 800; color: #111827; margin: 0 0 .25rem 0;
+        padding-top: .15rem; overflow: visible;
+    }
+    .finance-subtitle { color: #6b7280; margin: 0 0 1.25rem 0; line-height: 1.6; }
+    [data-testid="stMetric"] {
+        background: white; padding: 18px 20px; border-radius: 16px;
+        border: 1px solid #e5e7eb; box-shadow: 0 5px 20px rgba(15,23,42,.05);
+        min-height: 128px; overflow: visible !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: clamp(1.05rem, 1.55vw, 1.75rem) !important;
+        line-height: 1.35 !important; white-space: nowrap !important;
+        overflow: visible !important; text-overflow: clip !important; letter-spacing: -0.02em;
+    }
+    [data-testid="stMetricLabel"] { white-space: normal !important; line-height: 1.35 !important; }
+    div[data-testid="stForm"] {
+        background: white; padding: 22px; border-radius: 18px;
+        border: 1px solid #e5e7eb; box-shadow: 0 10px 30px rgba(15,23,42,.06);
+    }
+    .small-note { font-size:.85rem; color:#6b7280; }
+    .section-card { background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:16px; margin-bottom:14px; box-shadow:0 4px 16px rgba(15,23,42,.04); }
+    .login-brand { text-align:center; margin-bottom:1rem; }
+    .login-icon {
+        width:76px; height:76px; margin:0 auto 14px; border-radius:22px;
+        display:flex; align-items:center; justify-content:center; color:white;
+        font-size:2rem; font-weight:500; background:linear-gradient(135deg,#2563eb,#0f766e);
+        box-shadow:0 12px 28px rgba(37,99,235,.22);
+    }
+    .login-title { font-size:2rem; line-height:1.35; font-weight:800; color:#111827; margin:0; }
+    .login-subtitle { color:#64748b; margin:.35rem 0 .75rem; }
+    .login-security { background:#f1f5f9; border-radius:12px; padding:12px; color:#475569; text-align:center; font-size:.88rem; margin-bottom:1.2rem; }
+    @media (max-width: 900px) {
+        :root { --top-safe-space: 5rem; }
+        [data-testid="stMetricValue"] { white-space: normal !important; word-break: break-word; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -262,21 +300,46 @@ def data_editor_table(df: pd.DataFrame, hide_cols: Optional[List[str]] = None):
     st.dataframe(view, use_container_width=True, hide_index=True)
 
 
+def form_generation(name: str) -> int:
+    return int(st.session_state.get(f"form_generation_{name}", 0))
+
+
+def reset_form(name: str):
+    st.session_state[f"form_generation_{name}"] = form_generation(name) + 1
+
+
 def login():
     if st.session_state.get("authenticated"):
         return True
-    st.markdown(f'<div class="finance-title">{APP_TITLE}</div>', unsafe_allow_html=True)
-    st.markdown('<div class="finance-subtitle">Secure personal finance management</div>', unsafe_allow_html=True)
-    with st.form("login_form"):
-        password = st.text_input("Admin Password", type="password")
-        submitted = st.form_submit_button("Login", use_container_width=True)
-    if submitted:
-        expected = str(st.secrets.get("admin_password", "admin123"))
-        if password == expected:
-            st.session_state["authenticated"] = True
-            st.rerun()
-        else:
-            st.error("Incorrect password.")
+
+    left, centre, right = st.columns([1.15, 1.7, 1.15])
+    with centre:
+        with st.form("login_form"):
+            st.markdown(
+                '<div class="login-brand">'
+                '<div class="login-icon">Rs</div>'
+                '<div class="login-title">CEEKAY Finance</div>'
+                '<div class="login-subtitle">Personal Finance Manager</div>'
+                '<div class="login-security">Secure private access · Your financial data stays in Google Sheets</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown("### Welcome back")
+            st.caption("Enter your credentials to continue.")
+            username = st.text_input("Username", placeholder="Enter your username")
+            password = st.text_input("Password", type="password", placeholder="Enter your password")
+            submitted = st.form_submit_button("Sign in", use_container_width=True, type="primary")
+
+        if submitted:
+            admin_cfg = st.secrets.get("admin", {})
+            expected_user = str(admin_cfg.get("username", st.secrets.get("admin_username", "admin")))
+            expected_password = str(admin_cfg.get("password", st.secrets.get("admin_password", "admin123")))
+            if username.strip() == expected_user and password == expected_password:
+                st.session_state["authenticated"] = True
+                st.session_state["username"] = username.strip()
+                st.rerun()
+            else:
+                st.error("Incorrect username or password.")
     return False
 
 
@@ -409,7 +472,7 @@ def assets_page():
     st.subheader("Asset Management")
     tab1, tab2, tab3 = st.tabs(["Add Asset", "Edit / Delete", "Asset List"])
     with tab1:
-        with st.form("add_asset", clear_on_submit=True):
+        with st.form(f"add_asset_{form_generation('add_asset')}", clear_on_submit=True):
             c1, c2 = st.columns(2)
             name = c1.text_input("Asset Name")
             category = c2.selectbox("Category", categories("Asset"))
@@ -430,6 +493,7 @@ def assets_page():
                         "Current Value": current_value, "Ownership %": ownership, "Income Generating": income_gen,
                         "Monthly Income": monthly_income, "Notes": notes, "Created At": now_text(), "Updated At": now_text()
                     })
+                    reset_form("add_asset")
                     set_flash("Asset added successfully. The form has been cleared.")
                     st.rerun()
     with tab2:
@@ -463,7 +527,7 @@ def income_page():
     st.subheader("Income Management")
     tab1, tab2, tab3 = st.tabs(["Add Income", "Edit / Delete", "Income List"])
     with tab1:
-        with st.form("add_income", clear_on_submit=True):
+        with st.form(f"add_income_{form_generation('add_income')}", clear_on_submit=True):
             c1, c2 = st.columns(2)
             d = c1.date_input("Date", value=date.today())
             source = c2.text_input("Income Source")
@@ -476,6 +540,7 @@ def income_page():
                     st.error("Income source and a valid amount are required.")
                 else:
                     append_record("Income", {"Record ID": make_id("INC"), "Date": d.strftime(DATE_FMT), "Income Source": source.strip(), "Category": cat, "Amount": amount, "Income Type": income_type, "Description": desc, "Created At": now_text(), "Updated At": now_text()})
+                    reset_form("add_income")
                     set_flash("Income added successfully. The form has been cleared.")
                     st.rerun()
     with tab2:
@@ -500,7 +565,7 @@ def income_page():
 
 def allocation_page():
     st.subheader("Salary & Income Allocation")
-    with st.form("add_allocation", clear_on_submit=True):
+    with st.form(f"add_allocation_{form_generation('add_allocation')}", clear_on_submit=True):
         c1, c2 = st.columns(2)
         month = c1.text_input("Month", value=date.today().strftime("%Y-%m"), help="Use YYYY-MM format")
         source = c2.text_input("Income Source", value="Salary")
@@ -510,6 +575,7 @@ def allocation_page():
         notes = st.text_area("Notes")
         if st.form_submit_button("Save Allocation", use_container_width=True):
             append_record("SalaryAllocation", {"Record ID": make_id("SAL"), "Month": month, "Income Source": source, "Allocation Category": category, "Planned Amount": planned_amount, "Planned %": planned_pct, "Notes": notes, "Created At": now_text(), "Updated At": now_text()})
+            reset_form("add_allocation")
             set_flash("Salary allocation added successfully. The form has been cleared.")
             st.rerun()
 
@@ -538,7 +604,7 @@ def expenses_page():
     st.subheader("Expense Management")
     tab1, tab2, tab3 = st.tabs(["Add Expense", "Edit / Delete", "Expense List"])
     with tab1:
-        with st.form("add_expense", clear_on_submit=True):
+        with st.form(f"add_expense_{form_generation('add_expense')}", clear_on_submit=True):
             c1, c2 = st.columns(2)
             d = c1.date_input("Date", value=date.today())
             cat = c2.selectbox("Category", categories("Expense"))
@@ -553,6 +619,7 @@ def expenses_page():
                     st.error("Enter a valid expense amount.")
                 else:
                     append_record("Expenses", {"Record ID": make_id("EXP"), "Date": d.strftime(DATE_FMT), "Category": cat, "Description": desc, "Amount": amount, "Payment Method": method, "Scope": scope, "Recurring": recurring, "Notes": notes, "Created At": now_text(), "Updated At": now_text()})
+                    reset_form("add_expense")
                     set_flash("Expense added successfully. The form has been cleared.")
                     st.rerun()
     with tab2:
@@ -579,7 +646,7 @@ def liabilities_page():
     st.subheader("Liability Management")
     tab1, tab2, tab3 = st.tabs(["Add Liability", "Edit / Delete", "Liability Summary"])
     with tab1:
-        with st.form("add_liability", clear_on_submit=True):
+        with st.form(f"add_liability_{form_generation('add_liability')}", clear_on_submit=True):
             c1, c2 = st.columns(2)
             d = c1.date_input("Liability Date", value=date.today())
             name = c2.text_input("Liability Name")
@@ -596,6 +663,7 @@ def liabilities_page():
                     st.error("Liability name and original amount are required.")
                 else:
                     append_record("Liabilities", {"Record ID": make_id("LIA"), "Liability Date": d.strftime(DATE_FMT), "Liability Name": name.strip(), "Category": cat, "Original Amount": original, "Interest Rate %": rate, "Monthly Instalment": instalment, "Due Date": due.strftime(DATE_FMT), "Lender": lender, "Description": desc, "Status": status, "Created At": now_text(), "Updated At": now_text()})
+                    reset_form("add_liability")
                     set_flash("Liability added successfully. The form has been cleared.")
                     st.rerun()
     with tab2:
@@ -635,7 +703,7 @@ def payments_page():
         return
     summary = liability_summary(liabilities, load_sheet("LiabilityPayments"))
     active = summary[summary["Outstanding"] > 0.01]
-    with st.form("add_payment", clear_on_submit=True):
+    with st.form(f"add_payment_{form_generation('add_payment')}", clear_on_submit=True):
         options = active["Record ID"].astype(str).tolist() if not active.empty else summary["Record ID"].astype(str).tolist()
         label_map = {str(r["Record ID"]): f"{r['Liability Name']} — Outstanding {money(r['Outstanding'])}" for _, r in summary.iterrows()}
         lid = st.selectbox("Liability", options, format_func=lambda x: label_map.get(x, x))
@@ -657,6 +725,7 @@ def payments_page():
                 append_record("LiabilityPayments", {"Record ID": make_id("PAY"), "Payment Date": d.strftime(DATE_FMT), "Liability ID": lid, "Liability Name": row["Liability Name"], "Payment Amount": payment_amount, "Principal Amount": principal, "Interest Amount": interest, "Payment Method": method, "Reference No": ref, "Notes": notes, "Created At": now_text(), "Updated At": now_text()})
                 if principal >= row["Outstanding"] - 0.01:
                     update_record("Liabilities", lid, {"Status": "Paid"})
+                reset_form("add_payment")
                 set_flash("Liability payment added successfully. The form has been cleared.")
                 st.rerun()
     st.subheader("Payment History")
@@ -665,7 +734,7 @@ def payments_page():
 
 def budgets_page():
     st.subheader("Monthly Budget")
-    with st.form("add_budget", clear_on_submit=True):
+    with st.form(f"add_budget_{form_generation('add_budget')}", clear_on_submit=True):
         c1, c2 = st.columns(2)
         month = c1.text_input("Month", value=date.today().strftime("%Y-%m"))
         category = c2.selectbox("Category", categories("Expense"))
@@ -673,6 +742,7 @@ def budgets_page():
         notes = st.text_area("Notes")
         if st.form_submit_button("Save Budget", use_container_width=True):
             append_record("Budgets", {"Record ID": make_id("BUD"), "Month": month, "Category": category, "Budget Amount": amount, "Notes": notes, "Created At": now_text(), "Updated At": now_text()})
+            reset_form("add_budget")
             set_flash("Budget added successfully. The form has been cleared.")
             st.rerun()
 
@@ -702,7 +772,7 @@ def goals_page():
     st.subheader("Savings Goals")
     tab1, tab2 = st.tabs(["Add Goal", "Manage Goals"])
     with tab1:
-        with st.form("add_goal", clear_on_submit=True):
+        with st.form(f"add_goal_{form_generation('add_goal')}", clear_on_submit=True):
             c1, c2 = st.columns(2)
             name = c1.text_input("Goal Name")
             target = c2.number_input("Target Amount", min_value=0.0, step=1000.0)
@@ -712,6 +782,7 @@ def goals_page():
             notes = st.text_area("Notes")
             if st.form_submit_button("Save Goal", use_container_width=True):
                 append_record("SavingsGoals", {"Record ID": make_id("GOA"), "Goal Name": name, "Target Amount": target, "Current Saved": saved, "Target Date": target_date.strftime(DATE_FMT), "Status": status, "Notes": notes, "Created At": now_text(), "Updated At": now_text()})
+                reset_form("add_goal")
                 set_flash("Savings goal added successfully. The form has been cleared.")
                 st.rerun()
     with tab2:
@@ -766,7 +837,7 @@ def reports_page():
 
 def settings_page():
     st.subheader("Categories & Settings")
-    with st.form("add_category", clear_on_submit=True):
+    with st.form(f"add_category_{form_generation('add_category')}", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
         cat_type = c1.selectbox("Type", list(DEFAULT_CATEGORIES.keys()))
         category = c2.text_input("New Category")
@@ -775,6 +846,7 @@ def settings_page():
             if category.strip():
                 get_workbook().worksheet("Categories").append_row([cat_type, category.strip(), active])
                 clear_data_cache()
+                reset_form("add_category")
                 set_flash("Category added successfully. The form has been cleared.")
                 st.rerun()
     st.markdown('<div class="small-note">The Google Sheet is the live database. Do not rename worksheet tabs after deployment.</div>', unsafe_allow_html=True)
