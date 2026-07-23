@@ -81,16 +81,14 @@ st.markdown(
     h1,h2,h3,h4,h5,h6,.finance-title {line-height:1.25 !important;overflow:visible !important;padding-top:.12em !important;}
     .finance-title {font-size:2.1rem;font-weight:760;color:#0f172a;margin:0 0 .2rem;}
     .finance-subtitle {color:#64748b;margin:0 0 1.35rem;font-size:1.02rem;}
-    [data-testid="stMetric"] {background:#fff;padding:20px 22px;min-height:142px;border-radius:20px;border:1px solid #e2e8f0;box-shadow:0 10px 28px rgba(15,23,42,.06);overflow:visible;}
+    [data-testid="stMetric"] {background:#fff;padding:20px 18px;min-height:142px;border-radius:20px;border:1px solid #e2e8f0;box-shadow:0 10px 28px rgba(15,23,42,.06);overflow:visible !important;min-width:0;}
     [data-testid="stMetricLabel"] {font-size:.95rem;}
-    [data-testid="stMetricValue"] {font-size:clamp(1.25rem,2vw,2rem) !important;line-height:1.2 !important;white-space:normal !important;overflow:visible !important;text-overflow:clip !important;word-break:break-word;}
+    [data-testid="stMetricValue"], [data-testid="stMetricValue"] > div {font-size:clamp(1.05rem,1.55vw,1.65rem) !important;line-height:1.28 !important;white-space:nowrap !important;overflow:visible !important;text-overflow:clip !important;word-break:normal !important;max-width:none !important;width:auto !important;}
     div[data-testid="stForm"] {background:rgba(255,255,255,.98);padding:24px;border-radius:20px;border:1px solid #e2e8f0;box-shadow:0 10px 30px rgba(15,23,42,.05);}
     .section-card {background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:20px;margin-bottom:16px;box-shadow:0 8px 24px rgba(15,23,42,.05)}
     .small-note {font-size:.85rem;color:#64748b;}
     div.stButton > button, div[data-testid="stFormSubmitButton"] button {border-radius:12px;min-height:44px;font-weight:650;}
     div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, textarea {border-radius:12px !important;}
-    .login-wrap {max-width:560px;margin:0 auto;}
-    .login-card {background:#fff;border:1px solid #dbe4ee;border-radius:28px;padding:34px 34px 18px;box-shadow:0 22px 55px rgba(15,23,42,.12);text-align:center;margin-bottom:-1px;}
     .login-logo {width:86px;height:86px;border-radius:24px;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:2.25rem;background:linear-gradient(135deg,#2563eb,#0f766e);}
     .login-name {font-size:2rem;font-weight:780;line-height:1.25;color:#0f172a;}
     .login-sub {color:#64748b;margin:.35rem 0 1.1rem;}
@@ -283,22 +281,23 @@ def data_editor_table(df: pd.DataFrame, hide_cols: Optional[List[str]] = None):
 def login():
     if st.session_state.get("authenticated"):
         return True
-    st.markdown(
-        '<div class="login-wrap"><div class="login-card">'
-        '<div class="login-logo">Rs</div>'
-        '<div class="login-name">CEEKAY Finance</div>'
-        '<div class="login-sub">Personal Finance Manager</div>'
-        '<div class="login-note">🔒 Secure private access · Your financial data stays in Google Sheets</div>'
-        '</div></div>',
-        unsafe_allow_html=True,
-    )
+
     left, centre, right = st.columns([1, 1.65, 1])
     with centre:
         with st.form("login_form"):
-            st.markdown("### Welcome back")
+            st.markdown(
+                '<div style="text-align:center;padding:.25rem 0 .7rem;">'
+                '<div class="login-logo">Rs</div>'
+                '<div class="login-name">CEEKAY Finance</div>'
+                '<div class="login-sub">Personal Finance Manager</div>'
+                '<div class="login-note">🔒 Secure private access · Your financial data stays in Google Sheets</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
             username = st.text_input("Username", placeholder="Enter your username")
             password = st.text_input("Password", type="password", placeholder="Enter your password")
             submitted = st.form_submit_button("Sign in", use_container_width=True)
+
         if submitted:
             admin_cfg = st.secrets.get("admin", {})
             expected_user = str(admin_cfg.get("username", st.secrets.get("admin_username", "admin")))
@@ -624,7 +623,10 @@ def liabilities_page():
     st.subheader("Liability Management")
     tab1, tab2, tab3, tab4 = st.tabs(["Add Liability", "Add Amount", "Edit / Delete", "Liability Summary"])
     with tab1:
-        with st.form("add_liability"):
+        saved_message = st.session_state.pop("liability_saved_message", None)
+        if saved_message:
+            st.success(saved_message)
+        with st.form("add_liability", clear_on_submit=True):
             c1, c2 = st.columns(2)
             d = c1.date_input("Liability Date", value=date.today())
             name = c2.text_input("Liability Name")
@@ -641,7 +643,7 @@ def liabilities_page():
                     st.error("Liability name and original amount are required.")
                 else:
                     append_record("Liabilities", {"Record ID": make_id("LIA"), "Liability Date": d.strftime(DATE_FMT), "Liability Name": name.strip(), "Category": cat, "Original Amount": original, "Interest Rate %": rate, "Monthly Instalment": instalment, "Due Date": due.strftime(DATE_FMT), "Lender": lender, "Description": desc, "Status": status, "Created At": now_text(), "Updated At": now_text()})
-                    st.success("Liability saved.")
+                    st.session_state["liability_saved_message"] = f"Liability '{name.strip()}' was added successfully."
                     st.rerun()
     with tab2:
         df = load_sheet("Liabilities")
