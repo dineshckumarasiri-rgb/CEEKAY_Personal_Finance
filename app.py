@@ -1,4 +1,6 @@
 import json
+import random
+import time
 from datetime import date, datetime
 from typing import Dict, List, Optional
 
@@ -134,83 +136,113 @@ def get_client():
     return gspread.authorize(creds)
 
 
+def google_api_call(func, *args, **kwargs):
+    """Retry temporary Google quota and server errors with exponential backoff."""
+    last_error = None
+    for attempt in range(5):
+        try:
+            return func(*args, **kwargs)
+        except gspread.exceptions.APIError as exc:
+            last_error = exc
+            response = getattr(exc, "response", None)
+            status = getattr(response, "status_code", None)
+            if status not in (429, 500, 502, 503, 504) or attempt == 4:
+                raise
+            time.sleep((2 ** attempt) + random.uniform(0.2, 0.8))
+    raise last_error
+
+
 @st.cache_resource
 def get_workbook():
     client = get_client()
     workbook_name = st.secrets.get("workbook_name", WORKBOOK_NAME)
     try:
-        book = client.open(workbook_name)
+        return google_api_call(client.open, workbook_name)
     except gspread.SpreadsheetNotFound as exc:
         raise RuntimeError(
             f"Google Sheet '{workbook_name}' was not found. Create it manually and share it with the service-account email."
         ) from exc
-    initialize_workbook(book)
-    return book
 
 
-def ensure_worksheet(book, sheet_name: str):
-    """Return a worksheet, creating and initializing it when it is missing."""
-    headers = SHEETS[sheet_name]
-    try:
-        ws = book.worksheet(sheet_name)
-    except gspread.WorksheetNotFound:
-        ws = book.add_worksheet(
-            title=sheet_name,
-            rows=2000,
-            cols=max(20, len(headers) + 2),
-        )
-        ws.append_row(headers)
-        return ws
+@st.cache_resource
+def get_worksheet_map():
+    """Initialize sheets once and reuse worksheet objects without repeated metadata calls."""
+    book = get_workbook()
+    worksheets = google_api_call(book.worksheets)
+    worksheet_map = {ws.title: ws for ws in worksheets}
 
-    first_row = ws.row_values(1)
-    if not first_row:
-        ws.append_row(headers)
-    elif first_row != headers:
-        ws.update("A1", [headers])
-    return ws
+    for name, headers in SHEETS.items():
+        ws = worksheet_map.get(name)
+        if ws is None:
+            ws = google_api_call(
+                book.add_worksheet,
+                title=name,
+                rows=2000,
+                cols=max(20, len(headers) + 2),
+            )
+            google_api_call(ws.append_row, headers)
+            worksheet_map[name] = ws
+            continue
 
+        first_row = google_api_call(ws.row_values, 1)
+        if not first_row:
+            google_api_call(ws.append_row, headers)
+        elif first_row != headers:
+            google_api_call(ws.update, "A1", [headers])
 
-def initialize_workbook(book):
-    for name in SHEETS:
-        ensure_worksheet(book, name)
-    try:
-        default_sheet = book.worksheet("Sheet1")
-        if len(book.worksheets()) > 1 and not default_sheet.get_all_values():
-            book.del_worksheet(default_sheet)
-    except gspread.WorksheetNotFound:
-        pass
+    default_sheet = worksheet_map.get("Sheet1")
+    if default_sheet is not None and len(worksheet_map) > 1:
+        if not google_api_call(default_sheet.get_all_values):
+            google_api_call(book.del_worksheet, default_sheet)
+            worksheet_map.pop("Sheet1", None)
 
-    categories = book.worksheet("Categories")
-    if len(categories.get_all_values()) <= 1:
+    categories_ws = worksheet_map["Categories"]
+    if len(google_api_call(categories_ws.get_all_values)) <= 1:
         rows = []
         for cat_type, values in DEFAULT_CATEGORIES.items():
             rows.extend([[cat_type, value, "Yes"] for value in values])
-        categories.append_rows(rows)
+        google_api_call(categories_ws.append_rows, rows)
 
-    settings = book.worksheet("Settings")
-    if len(settings.get_all_values()) <= 1:
-        settings.append_rows([
+    settings_ws = worksheet_map["Settings"]
+    if len(google_api_call(settings_ws.get_all_values)) <= 1:
+        google_api_call(settings_ws.append_rows, [
             ["Currency", "LKR"],
             ["App Name", APP_TITLE],
             ["Figures Hidden By Default", "Yes"],
         ])
 
+    return worksheet_map
+
+
+def initialize_workbook(book):
+    """Compatibility wrapper; initialization is handled once by get_worksheet_map()."""
+    get_worksheet_map()
+
+
+def ensure_worksheet(book, sheet_name: str):
+    """Return an initialized cached worksheet without fetching metadata again."""
+    return get_worksheet(sheet_name)
+
+
+def get_worksheet(sheet_name: str):
+    worksheet_map = get_worksheet_map()
+    if sheet_name not in worksheet_map:
+        get_worksheet_map.clear()
+        worksheet_map = get_worksheet_map()
+    return worksheet_map[sheet_name]
+
 
 @st.cache_data(ttl=60, show_spinner=False)
 def load_sheet(sheet_name: str) -> pd.DataFrame:
-    ws = ensure_worksheet(get_workbook(), sheet_name)
-    records = ws.get_all_records()
+    ws = get_worksheet(sheet_name)
+    records = google_api_call(ws.get_all_records)
     return pd.DataFrame(records, columns=SHEETS[sheet_name]) if records else pd.DataFrame(columns=SHEETS[sheet_name])
 
 
 def load_sheet_fresh(sheet_name: str) -> pd.DataFrame:
-    """Read the worksheet directly without using Streamlit's data cache.
-
-    This is used for liability payments so newly added, edited, or deleted rows
-    are reflected immediately in the balance and payment-history sections.
-    """
-    ws = ensure_worksheet(get_workbook(), sheet_name)
-    values = ws.get_all_values()
+    """Read a worksheet directly so edits and deletions appear immediately."""
+    ws = get_worksheet(sheet_name)
+    values = google_api_call(ws.get_all_values)
     if len(values) <= 1:
         return pd.DataFrame(columns=SHEETS[sheet_name])
 
@@ -220,7 +252,10 @@ def load_sheet_fresh(sheet_name: str) -> pd.DataFrame:
         if not any(str(cell).strip() for cell in row):
             continue
         padded = row + [""] * max(0, len(headers) - len(row))
-        records.append({header: padded[index] if index < len(padded) else "" for index, header in enumerate(headers)})
+        records.append({
+            header: padded[index] if index < len(padded) else ""
+            for index, header in enumerate(headers)
+        })
 
     df = pd.DataFrame(records)
     for column in SHEETS[sheet_name]:
@@ -230,22 +265,23 @@ def load_sheet_fresh(sheet_name: str) -> pd.DataFrame:
 
 
 def clear_data_cache():
-    # Clear all cached sheet data so balances are recalculated from Google Sheets
-    # immediately after add, edit, or delete operations.
     load_sheet.clear()
-    st.cache_data.clear()
 
 
 def append_record(sheet_name: str, record: Dict):
     headers = SHEETS[sheet_name]
     row = [record.get(header, "") for header in headers]
-    ensure_worksheet(get_workbook(), sheet_name).append_row(row, value_input_option="USER_ENTERED")
+    google_api_call(
+        get_worksheet(sheet_name).append_row,
+        row,
+        value_input_option="USER_ENTERED",
+    )
     clear_data_cache()
 
 
 def update_record(sheet_name: str, record_id: str, updates: Dict) -> bool:
-    ws = ensure_worksheet(get_workbook(), sheet_name)
-    values = ws.get_all_values()
+    ws = get_worksheet(sheet_name)
+    values = google_api_call(ws.get_all_values)
     if not values:
         return False
     headers = values[0]
@@ -258,15 +294,20 @@ def update_record(sheet_name: str, record_id: str, updates: Dict) -> bool:
             current = {h: row[i] if i < len(row) else "" for i, h in enumerate(headers)}
             current.update(updates)
             current["Updated At"] = now_text()
-            ws.update(f"A{row_idx}", [[current.get(h, "") for h in headers]], value_input_option="USER_ENTERED")
+            google_api_call(
+                ws.update,
+                f"A{row_idx}",
+                [[current.get(h, "") for h in headers]],
+                value_input_option="USER_ENTERED",
+            )
             clear_data_cache()
             return True
     return False
 
 
 def delete_record(sheet_name: str, record_id: str) -> bool:
-    ws = ensure_worksheet(get_workbook(), sheet_name)
-    values = ws.get_all_values()
+    ws = get_worksheet(sheet_name)
+    values = google_api_call(ws.get_all_values)
     if not values:
         return False
     headers = values[0]
@@ -275,7 +316,7 @@ def delete_record(sheet_name: str, record_id: str) -> bool:
     id_col = headers.index("Record ID")
     for row_idx, row in enumerate(values[1:], start=2):
         if len(row) > id_col and row[id_col] == record_id:
-            ws.delete_rows(row_idx)
+            google_api_call(ws.delete_rows, row_idx)
             clear_data_cache()
             return True
     return False
@@ -1081,7 +1122,7 @@ def settings_page():
         active = c3.selectbox("Active", ["Yes", "No"])
         if st.form_submit_button("Add Category", use_container_width=True):
             if category.strip():
-                get_workbook().worksheet("Categories").append_row([cat_type, category.strip(), active])
+                google_api_call(get_worksheet("Categories").append_row, [cat_type, category.strip(), active])
                 clear_data_cache()
                 st.success("Category added.")
                 st.rerun()
