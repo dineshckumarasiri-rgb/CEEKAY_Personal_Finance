@@ -204,7 +204,10 @@ def load_sheet(sheet_name: str) -> pd.DataFrame:
 
 
 def clear_data_cache():
+    # Clear all cached sheet data so balances are recalculated from Google Sheets
+    # immediately after add, edit, or delete operations.
     load_sheet.clear()
+    st.cache_data.clear()
 
 
 def append_record(sheet_name: str, record: Dict):
@@ -733,6 +736,8 @@ def liabilities_page():
 
 def payments_page():
     st.subheader("Liability Payments")
+    if st.session_state.get("payment_delete_success"):
+        st.success(st.session_state.pop("payment_delete_success"))
     liabilities = load_sheet("Liabilities")
     if liabilities.empty:
         st.warning("Add a liability before recording payments.")
@@ -807,7 +812,11 @@ def payments_page():
                 liability_id = str(prow["Liability ID"])
                 if delete_record("LiabilityPayments", payment_id):
                     update_record("Liabilities", liability_id, {"Status": "Active"})
-                    st.success("Payment deleted and the liability balance was recalculated.")
+                    clear_data_cache()
+                    st.session_state["payment_delete_success"] = (
+                        "Payment deleted. Principal paid, total paid, outstanding balance, "
+                        "and payment progress were recalculated."
+                    )
                     st.rerun()
 
             st.markdown("#### Payment History")
