@@ -1011,13 +1011,40 @@ def liabilities_page():
         rid = record_selector(df, "Liability Name", "liability_edit")
         if rid:
             row = df[df["Record ID"].astype(str) == rid].iloc[0]
+            parsed_liability_date = pd.to_datetime(str(row["Liability Date"]), errors="coerce")
+            default_liability_date = parsed_liability_date.date() if not pd.isna(parsed_liability_date) else date.today()
+
             with st.form("edit_liability"):
-                instalment = st.number_input("Monthly Instalment", min_value=0.0, value=to_float(row["Monthly Instalment"]), step=1000.0)
-                status = st.selectbox("Status", ["Active", "On Hold", "Paid"], index=["Active", "On Hold", "Paid"].index(row["Status"]) if row["Status"] in ["Active", "On Hold", "Paid"] else 0)
+                c1, c2 = st.columns(2)
+                liability_date = c1.date_input("Liability Date", value=default_liability_date)
+                original_amount = c2.number_input(
+                    "Original Amount",
+                    min_value=0.01,
+                    value=max(to_float(row["Original Amount"]), 0.01),
+                    step=1000.0,
+                )
+                instalment = c1.number_input(
+                    "Monthly Instalment",
+                    min_value=0.0,
+                    value=to_float(row["Monthly Instalment"]),
+                    step=1000.0,
+                )
+                status_options = ["Active", "On Hold", "Paid"]
+                status = c2.selectbox(
+                    "Status",
+                    status_options,
+                    index=status_options.index(row["Status"]) if row["Status"] in status_options else 0,
+                )
                 desc = st.text_area("Description", value=str(row["Description"]))
                 if st.form_submit_button("Update Liability", use_container_width=True):
-                    update_record("Liabilities", rid, {"Monthly Instalment": instalment, "Status": status, "Description": desc})
-                    st.success("Liability updated.")
+                    update_record("Liabilities", rid, {
+                        "Liability Date": liability_date.strftime(DATE_FMT),
+                        "Original Amount": original_amount,
+                        "Monthly Instalment": instalment,
+                        "Status": status,
+                        "Description": desc,
+                    })
+                    st.success("Liability updated and balances recalculated.")
                     st.rerun()
             confirm = st.checkbox("Confirm liability deletion", key="delete_liability_confirm")
             if st.button("Delete Liability", type="primary", disabled=not confirm):
