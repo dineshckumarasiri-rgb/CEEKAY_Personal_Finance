@@ -340,12 +340,55 @@ def record_selector(df: pd.DataFrame, label_col: str, key: str) -> Optional[str]
     return st.selectbox("Select record", options, format_func=lambda x: labels.get(x, x), key=key)
 
 
+NUMBER_DISPLAY_COLUMNS = {
+    "Purchase Value", "Current Value", "Monthly Income", "Amount",
+    "Planned Amount", "Original Amount", "Monthly Instalment",
+    "Payment Amount", "Principal Amount", "Interest Amount",
+    "Budget Amount", "Target Amount", "Current Saved",
+    "Additional Amounts", "Interest / Fees Added", "Current Total Liability",
+    "Principal Paid", "Interest Paid", "Total Paid", "Outstanding",
+    "Actual Expense", "Remaining", "Income", "Expenses", "Balance",
+}
+
+PERCENT_DISPLAY_COLUMNS = {
+    "Ownership %", "Planned %", "Interest Rate %", "Progress %", "Usage %",
+}
+
+
+def format_dataframe_numbers(df: pd.DataFrame) -> pd.DataFrame:
+    """Format displayed financial figures with thousands separators.
+
+    This changes presentation only. The underlying DataFrame and calculations
+    remain numeric and unchanged.
+    """
+    view = df.copy()
+    for column in view.columns:
+        if column in NUMBER_DISPLAY_COLUMNS:
+            view[column] = view[column].apply(
+                lambda value: f"{to_float(value):,.2f}" if str(value).strip() not in ("", "nan", "None") else ""
+            )
+        elif column in PERCENT_DISPLAY_COLUMNS:
+            view[column] = view[column].apply(
+                lambda value: f"{to_float(value):,.1f}%" if str(value).strip() not in ("", "nan", "None") else ""
+            )
+    return view
+
+
 def data_editor_table(df: pd.DataFrame, hide_cols: Optional[List[str]] = None):
     if df.empty:
         st.info("No records found.")
         return
     view = df.drop(columns=hide_cols or [], errors="ignore")
-    st.dataframe(view, use_container_width=True, hide_index=True)
+    st.dataframe(format_dataframe_numbers(view), use_container_width=True, hide_index=True)
+
+
+def format_chart_numbers(fig):
+    """Apply comma-separated numeric formatting to Plotly charts."""
+    fig.update_layout(
+        separators=".,",
+        yaxis_tickformat=",.2f",
+    )
+    return fig
 
 
 def login():
@@ -510,6 +553,8 @@ def dashboard():
         if combined:
             chart_df = pd.concat(combined, ignore_index=True)
             fig = px.bar(chart_df, x="Month", y="Amount", color="Type", barmode="group")
+            fig.update_traces(hovertemplate="%{x}<br>LKR %{y:,.2f}<extra></extra>")
+            format_chart_numbers(fig)
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Add income and expense records to display this chart.")
@@ -519,6 +564,7 @@ def dashboard():
         if not expenses.empty:
             exp_breakdown = expenses.groupby("Category")["Amount"].sum().reset_index()
             fig = px.pie(exp_breakdown, names="Category", values="Amount", hole=.55)
+            fig.update_traces(hovertemplate="%{label}<br>LKR %{value:,.2f}<br>%{percent}<extra></extra>")
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Add expense records to display this chart.")
@@ -620,7 +666,7 @@ def dashboard():
         st.subheader("Liability Progress")
         if not liab.empty:
             show = liab[["Liability Name", "Original Amount", "Principal Paid", "Outstanding", "Progress %"]].copy()
-            st.dataframe(show, use_container_width=True, hide_index=True)
+            st.dataframe(format_dataframe_numbers(show), use_container_width=True, hide_index=True)
         else:
             st.info("No liabilities recorded.")
     with right:
@@ -630,7 +676,7 @@ def dashboard():
             g["Target Amount"] = g["Target Amount"].apply(to_float)
             g["Current Saved"] = g["Current Saved"].apply(to_float)
             g["Progress %"] = g.apply(lambda r: min(100.0, (r["Current Saved"] / r["Target Amount"] * 100) if r["Target Amount"] else 0), axis=1)
-            st.dataframe(g[["Goal Name", "Target Amount", "Current Saved", "Progress %", "Target Date", "Status"]], use_container_width=True, hide_index=True)
+            st.dataframe(format_dataframe_numbers(g[["Goal Name", "Target Amount", "Current Saved", "Progress %", "Target Date", "Status"]]), use_container_width=True, hide_index=True)
         else:
             st.info("No savings goals recorded.")
 
@@ -1202,8 +1248,10 @@ def budgets_page():
     compare["Actual Expense"] = compare["Actual Expense"].fillna(0)
     compare["Remaining"] = compare["Budget Amount"] - compare["Actual Expense"]
     compare["Usage %"] = compare.apply(lambda r: (r["Actual Expense"] / r["Budget Amount"] * 100) if r["Budget Amount"] else 0, axis=1)
-    st.dataframe(compare, use_container_width=True, hide_index=True)
+    st.dataframe(format_dataframe_numbers(compare), use_container_width=True, hide_index=True)
     fig = px.bar(compare, x="Category", y=["Budget Amount", "Actual Expense"], barmode="group")
+    fig.update_traces(hovertemplate="%{x}<br>LKR %{y:,.2f}<extra></extra>")
+    format_chart_numbers(fig)
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -1268,7 +1316,7 @@ def reports_page():
         df = inc.merge(exp, on="Month", how="outer").fillna(0)
         df["Balance"] = df["Income"] - df["Expenses"]
         df = df.sort_values("Month", ascending=False)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(format_dataframe_numbers(df), use_container_width=True, hide_index=True)
     csv = df.to_csv(index=False).encode("utf-8")
     st.download_button("Download CSV", data=csv, file_name=f"{report.lower().replace(' ', '_')}.csv", mime="text/csv", use_container_width=True)
 
