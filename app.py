@@ -78,6 +78,14 @@ st.markdown(
     .finance-subtitle {color: #6b7280; margin-bottom: 1rem;}
     .small-note {font-size:.85rem;color:#6b7280;}
     .section-card {background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 4px 16px rgba(15,23,42,.04)}
+    .login-wrap {max-width:460px;margin:7vh auto 0 auto;padding:0 14px;}
+    .login-brand {text-align:center;margin-bottom:22px;}
+    .login-logo {width:72px;height:72px;border-radius:22px;margin:0 auto 15px auto;display:flex;align-items:center;justify-content:center;background:linear-gradient(145deg,#111827,#334155);color:#fff;font-size:32px;box-shadow:0 14px 34px rgba(15,23,42,.22);}
+    .login-title {font-size:30px;font-weight:760;letter-spacing:-.6px;color:#0f172a;}
+    .login-subtitle {font-size:14px;color:#64748b;margin-top:6px;}
+    .login-foot {text-align:center;color:#94a3b8;font-size:12px;margin-top:18px;}
+    [data-testid="stForm"] button {min-height:46px;border-radius:10px;font-weight:650;}
+    [data-testid="stTextInput"] input, [data-testid="stNumberInput"] input, [data-baseweb="select"] > div {border-radius:10px !important;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -124,8 +132,10 @@ def get_workbook():
     workbook_name = st.secrets.get("workbook_name", WORKBOOK_NAME)
     try:
         book = client.open(workbook_name)
-    except gspread.SpreadsheetNotFound:
-        book = client.create(workbook_name)
+    except gspread.SpreadsheetNotFound as exc:
+        raise RuntimeError(
+            f"Spreadsheet '{workbook_name}' was not found. Create it in Google Sheets and share it with the service-account email as Editor."
+        ) from exc
     initialize_workbook(book)
     return book
 
@@ -251,18 +261,41 @@ def data_editor_table(df: pd.DataFrame, hide_cols: Optional[List[str]] = None):
 def login():
     if st.session_state.get("authenticated"):
         return True
-    st.markdown(f'<div class="finance-title">{APP_TITLE}</div>', unsafe_allow_html=True)
-    st.markdown('<div class="finance-subtitle">Secure personal finance management</div>', unsafe_allow_html=True)
-    with st.form("login_form"):
-        password = st.text_input("Admin Password", type="password")
-        submitted = st.form_submit_button("Login", use_container_width=True)
+
+    st.markdown(
+        """
+        <div class="login-wrap">
+          <div class="login-brand">
+            <div class="login-logo">₨</div>
+            <div class="login-title">CEEKAY Finance</div>
+            <div class="login-subtitle">Secure personal finance management</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    left, center, right = st.columns([1.15, 1, 1.15])
+    with center:
+        with st.form("login_form", clear_on_submit=False):
+            st.markdown("#### Sign in")
+            username = st.text_input("Username", placeholder="Enter username")
+            password = st.text_input("Password", type="password", placeholder="Enter password")
+            submitted = st.form_submit_button("Sign in securely", use_container_width=True)
+
+        st.markdown('<div class="login-foot">CEEKAY Finance Manager · Private access</div>', unsafe_allow_html=True)
+
     if submitted:
-        expected = str(st.secrets.get("admin_password", "admin123"))
-        if password == expected:
+        admin_section = st.secrets.get("admin", {})
+        expected_user = str(admin_section.get("username", st.secrets.get("admin_username", "admin")))
+        expected_password = str(admin_section.get("password", st.secrets.get("admin_password", "admin123")))
+        if username.strip() == expected_user and password == expected_password:
             st.session_state["authenticated"] = True
+            st.session_state["username"] = username.strip()
             st.rerun()
         else:
-            st.error("Incorrect password.")
+            with center:
+                st.error("The username or password is incorrect.")
     return False
 
 
