@@ -68,28 +68,16 @@ st.set_page_config(page_title=APP_TITLE, page_icon="💰", layout="wide")
 st.markdown(
     """
     <style>
-    :root {--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--panel:#fff;--brand:#2563eb;--brand2:#0f766e;}
-    html,body,[class*="css"]{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
-    .stApp{background:linear-gradient(145deg,#f8fafc 0%,#eef4fb 52%,#f8fafc 100%);color:var(--ink);}
-    [data-testid="stHeader"]{background:rgba(255,255,255,.88);backdrop-filter:blur(14px);border-bottom:1px solid rgba(226,232,240,.8);}
-    .block-container{padding-top:4.8rem!important;padding-bottom:3rem;max-width:1500px;}
-    [data-testid="stSidebar"]{background:linear-gradient(180deg,#0f172a 0%,#111c31 60%,#0b1220 100%);border-right:1px solid rgba(255,255,255,.07);}
-    [data-testid="stSidebar"]>div:first-child{padding-top:1.2rem;}
-    [data-testid="stSidebar"] *{color:#f8fafc;}
-    [data-testid="stSidebar"] [role="radiogroup"] label{padding:.54rem .7rem;border-radius:10px;margin:.08rem 0;transition:.18s ease;}
-    [data-testid="stSidebar"] [role="radiogroup"] label:hover{background:rgba(255,255,255,.08);}
-    .side-brand{padding:.35rem .25rem 1.15rem;border-bottom:1px solid rgba(255,255,255,.09);margin-bottom:1rem;}
-    .side-brand-row{display:flex;align-items:center;gap:.72rem}.side-logo{width:42px;height:42px;border-radius:13px;background:linear-gradient(135deg,#60a5fa,#14b8a6);display:flex;align-items:center;justify-content:center;font-size:21px;box-shadow:0 8px 22px rgba(37,99,235,.28)}
-    .side-name{font-size:1.08rem;font-weight:750;line-height:1.15}.side-tag{font-size:.72rem;color:#94a3b8!important;margin-top:.18rem;letter-spacing:.04em;text-transform:uppercase}
-    .page-hero{background:linear-gradient(120deg,#0f172a 0%,#172554 58%,#0f766e 130%);border-radius:22px;padding:1.45rem 1.6rem;margin-bottom:1.25rem;box-shadow:0 18px 48px rgba(15,23,42,.16);position:relative;overflow:hidden}
-    .page-hero:after{content:"";position:absolute;width:210px;height:210px;border-radius:50%;right:-70px;top:-95px;background:rgba(255,255,255,.08)}
-    .page-kicker{font-size:.75rem;letter-spacing:.13em;text-transform:uppercase;color:#93c5fd;font-weight:700;margin-bottom:.3rem}.finance-title{font-size:2.05rem;font-weight:780;color:#fff;line-height:1.16;margin:0;letter-spacing:-.035em}.finance-subtitle{color:#cbd5e1;margin-top:.42rem;font-size:.96rem;max-width:760px}
-    [data-testid="stMetric"]{background:rgba(255,255,255,.96);padding:1.15rem 1.2rem;border-radius:18px;border:1px solid rgba(226,232,240,.95);box-shadow:0 10px 28px rgba(15,23,42,.065);min-height:112px;transition:.18s ease}
-    [data-testid="stMetric"]:hover{transform:translateY(-2px);box-shadow:0 15px 34px rgba(15,23,42,.09)}[data-testid="stMetricLabel"]{font-size:.8rem;color:#64748b;font-weight:650}[data-testid="stMetricValue"]{font-size:1.52rem;font-weight:630;color:#0f172a;letter-spacing:-.02em}
-    div[data-testid="stForm"]{background:rgba(255,255,255,.97);padding:1.25rem;border-radius:18px;border:1px solid var(--line);box-shadow:0 9px 30px rgba(15,23,42,.055)}
-    [data-testid="stDataFrame"]{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}.stButton>button,.stDownloadButton>button{border-radius:11px;min-height:42px;font-weight:650;border:1px solid #cbd5e1;transition:.18s ease}.stButton>button:hover,.stDownloadButton>button:hover{transform:translateY(-1px);border-color:#2563eb}
-    [data-testid="stTextInput"] input,[data-testid="stNumberInput"] input,[data-testid="stDateInput"] input,[data-baseweb="select"]>div,textarea{border-radius:11px!important}.stAlert{border-radius:14px}h1,h2,h3{letter-spacing:-.025em;color:#0f172a}.small-note{font-size:.85rem;color:#64748b}.section-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:1rem;margin-bottom:1rem;box-shadow:0 8px 24px rgba(15,23,42,.05)}
-    .login-shell{max-width:470px;margin:2.5vh auto 0;padding:0 12px}.login-panel{background:rgba(255,255,255,.98);border:1px solid #e2e8f0;border-radius:24px;padding:1.55rem 1.55rem .7rem;box-shadow:0 24px 70px rgba(15,23,42,.13)}.login-brand{text-align:center;margin-bottom:1.15rem}.login-logo{width:70px;height:70px;border-radius:20px;margin:0 auto .85rem;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2563eb,#0f766e);color:#fff;font-size:30px;box-shadow:0 15px 34px rgba(37,99,235,.25)}.login-title{font-size:1.72rem;font-weight:780;letter-spacing:-.04em;color:#0f172a}.login-subtitle{font-size:.9rem;color:#64748b;margin-top:.32rem}.login-security{display:flex;justify-content:center;gap:.45rem;align-items:center;background:#f1f5f9;border-radius:10px;padding:.55rem .7rem;color:#475569;font-size:.76rem;margin:.9rem 0 .25rem}.login-foot{text-align:center;color:#94a3b8;font-size:.72rem;margin:.95rem 0 .35rem}
+    .stApp {background: linear-gradient(135deg, #f7f9fc 0%, #eef2f7 100%); color: #111827;}
+    [data-testid="stSidebar"] {background: #111827;}
+    [data-testid="stSidebar"] * {color: #f9fafb !important;}
+    [data-testid="stMetric"] {background: white; padding: 18px; border-radius: 16px; border: 1px solid #e5e7eb; box-shadow: 0 5px 20px rgba(15,23,42,.05);}
+    div[data-testid="stForm"] {background: white; padding: 18px; border-radius: 16px; border: 1px solid #e5e7eb;}
+    .block-container {padding-top: 1.5rem; padding-bottom: 2.5rem;}
+    .finance-title {font-size: 2rem; font-weight: 700; color: #111827; margin-bottom: .1rem;}
+    .finance-subtitle {color: #6b7280; margin-bottom: 1rem;}
+    .small-note {font-size:.85rem;color:#6b7280;}
+    .section-card {background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 4px 16px rgba(15,23,42,.04)}
     </style>
     """,
     unsafe_allow_html=True,
@@ -136,10 +124,8 @@ def get_workbook():
     workbook_name = st.secrets.get("workbook_name", WORKBOOK_NAME)
     try:
         book = client.open(workbook_name)
-    except gspread.SpreadsheetNotFound as exc:
-        raise RuntimeError(
-            f"Spreadsheet '{workbook_name}' was not found. Create it in Google Sheets and share it with the service-account email as Editor."
-        ) from exc
+    except gspread.SpreadsheetNotFound:
+        book = client.create(workbook_name)
     initialize_workbook(book)
     return book
 
@@ -265,36 +251,18 @@ def data_editor_table(df: pd.DataFrame, hide_cols: Optional[List[str]] = None):
 def login():
     if st.session_state.get("authenticated"):
         return True
-
-    left, center, right = st.columns([1.05, 1.15, 1.05])
-    with center:
-        st.markdown(
-            """
-            <div class="login-shell"><div class="login-panel">
-              <div class="login-brand"><div class="login-logo">₨</div><div class="login-title">CEEKAY Finance</div><div class="login-subtitle">Personal Finance Manager</div></div>
-              <div class="login-security">🔒 Secure private access · Your financial data stays in Google Sheets</div>
-            </div></div>
-            """, unsafe_allow_html=True,
-        )
-        with st.form("login_form", clear_on_submit=False):
-            st.markdown("### Welcome back")
-            st.caption("Enter your credentials to continue.")
-            username = st.text_input("Username", placeholder="Enter your username")
-            password = st.text_input("Password", type="password", placeholder="Enter your password")
-            submitted = st.form_submit_button("Sign in", use_container_width=True, type="primary")
-        st.markdown('<div class="login-foot">CEEKAY Finance Manager · Authorized users only</div>', unsafe_allow_html=True)
-
+    st.markdown(f'<div class="finance-title">{APP_TITLE}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="finance-subtitle">Secure personal finance management</div>', unsafe_allow_html=True)
+    with st.form("login_form"):
+        password = st.text_input("Admin Password", type="password")
+        submitted = st.form_submit_button("Login", use_container_width=True)
     if submitted:
-        admin_section = st.secrets.get("admin", {})
-        expected_user = str(admin_section.get("username", st.secrets.get("admin_username", "admin")))
-        expected_password = str(admin_section.get("password", st.secrets.get("admin_password", "admin123")))
-        if username.strip() == expected_user and password == expected_password:
+        expected = str(st.secrets.get("admin_password", "admin123"))
+        if password == expected:
             st.session_state["authenticated"] = True
-            st.session_state["username"] = username.strip()
             st.rerun()
         else:
-            with center:
-                st.error("The username or password is incorrect.")
+            st.error("Incorrect password.")
     return False
 
 
@@ -810,39 +778,20 @@ def main():
         st.stop()
 
     with st.sidebar:
-        st.markdown(
-            """
-            <div class="side-brand"><div class="side-brand-row"><div class="side-logo">₨</div><div><div class="side-name">CEEKAY Finance</div><div class="side-tag">Manager Pro</div></div></div></div>
-            """, unsafe_allow_html=True,
-        )
+        st.title("CEEKAY Finance")
         page = st.radio("Navigation", [
             "Dashboard", "Assets", "Income", "Salary Allocation", "Expenses",
             "Liabilities", "Liability Payments", "Monthly Budget", "Savings Goals",
             "Reports", "Settings"
         ])
         st.divider()
-        st.caption(f"Signed in as {st.session_state.get('username', 'Admin')}")
-        if st.button("Sign out", use_container_width=True):
+        st.caption("Personal finance management")
+        if st.button("Logout", use_container_width=True):
             st.session_state.clear()
             st.rerun()
 
-    subtitles = {
-        "Dashboard": "A clear view of your net worth, cash flow, debt and savings progress.",
-        "Assets": "Maintain and review everything you own in one structured register.",
-        "Income": "Record salary, business income and every other source of earnings.",
-        "Salary Allocation": "Plan how each income source is divided across your priorities.",
-        "Expenses": "Track spending accurately and understand where your money goes.",
-        "Liabilities": "Manage loans and other obligations with up-to-date balances.",
-        "Liability Payments": "Record principal and interest payments against each liability.",
-        "Monthly Budget": "Set category limits and compare them with actual spending.",
-        "Savings Goals": "Track progress toward your personal and business targets.",
-        "Reports": "Review and export your financial records for any period.",
-        "Settings": "Manage categories and system preferences.",
-    }
-    st.markdown(
-        f'''<div class="page-hero"><div class="page-kicker">CEEKAY Finance Manager Pro</div><div class="finance-title">{page}</div><div class="finance-subtitle">{subtitles[page]}</div></div>''',
-        unsafe_allow_html=True,
-    )
+    st.markdown(f'<div class="finance-title">{page}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="finance-subtitle">Manage your financial position with clear records and reports.</div>', unsafe_allow_html=True)
 
     pages = {
         "Dashboard": dashboard,
