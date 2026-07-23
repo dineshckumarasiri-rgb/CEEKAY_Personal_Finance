@@ -142,25 +142,39 @@ def get_workbook():
     workbook_name = st.secrets.get("workbook_name", WORKBOOK_NAME)
     try:
         book = client.open(workbook_name)
-    except gspread.SpreadsheetNotFound:
-        book = client.create(workbook_name)
+    except gspread.SpreadsheetNotFound as exc:
+        raise RuntimeError(
+            f"Google Sheet '{workbook_name}' was not found. Create it manually and share it with the service-account email."
+        ) from exc
     initialize_workbook(book)
     return book
 
 
+def ensure_worksheet(book, sheet_name: str):
+    """Return a worksheet, creating and initializing it when it is missing."""
+    headers = SHEETS[sheet_name]
+    try:
+        ws = book.worksheet(sheet_name)
+    except gspread.WorksheetNotFound:
+        ws = book.add_worksheet(
+            title=sheet_name,
+            rows=2000,
+            cols=max(20, len(headers) + 2),
+        )
+        ws.append_row(headers)
+        return ws
+
+    first_row = ws.row_values(1)
+    if not first_row:
+        ws.append_row(headers)
+    elif first_row != headers:
+        ws.update("A1", [headers])
+    return ws
+
+
 def initialize_workbook(book):
-    existing = {ws.title for ws in book.worksheets()}
-    for name, headers in SHEETS.items():
-        if name not in existing:
-            ws = book.add_worksheet(title=name, rows=2000, cols=max(20, len(headers) + 2))
-            ws.append_row(headers)
-        else:
-            ws = book.worksheet(name)
-            first_row = ws.row_values(1)
-            if not first_row:
-                ws.append_row(headers)
-            elif first_row != headers:
-                ws.update("A1", [headers])
+    for name in SHEETS:
+        ensure_worksheet(book, name)
     try:
         default_sheet = book.worksheet("Sheet1")
         if len(book.worksheets()) > 1 and not default_sheet.get_all_values():
@@ -186,7 +200,7 @@ def initialize_workbook(book):
 
 @st.cache_data(ttl=60, show_spinner=False)
 def load_sheet(sheet_name: str) -> pd.DataFrame:
-    ws = get_workbook().worksheet(sheet_name)
+    ws = ensure_worksheet(get_workbook(), sheet_name)
     records = ws.get_all_records()
     return pd.DataFrame(records, columns=SHEETS[sheet_name]) if records else pd.DataFrame(columns=SHEETS[sheet_name])
 
@@ -198,12 +212,12 @@ def clear_data_cache():
 def append_record(sheet_name: str, record: Dict):
     headers = SHEETS[sheet_name]
     row = [record.get(header, "") for header in headers]
-    get_workbook().worksheet(sheet_name).append_row(row, value_input_option="USER_ENTERED")
+    ensure_worksheet(get_workbook(), sheet_name).append_row(row, value_input_option="USER_ENTERED")
     clear_data_cache()
 
 
 def update_record(sheet_name: str, record_id: str, updates: Dict) -> bool:
-    ws = get_workbook().worksheet(sheet_name)
+    ws = ensure_worksheet(get_workbook(), sheet_name)
     values = ws.get_all_values()
     if not values:
         return False
@@ -224,7 +238,7 @@ def update_record(sheet_name: str, record_id: str, updates: Dict) -> bool:
 
 
 def delete_record(sheet_name: str, record_id: str) -> bool:
-    ws = get_workbook().worksheet(sheet_name)
+    ws = ensure_worksheet(get_workbook(), sheet_name)
     values = ws.get_all_values()
     if not values:
         return False
