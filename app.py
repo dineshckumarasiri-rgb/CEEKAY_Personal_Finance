@@ -251,127 +251,18 @@ def data_editor_table(df: pd.DataFrame, hide_cols: Optional[List[str]] = None):
 def login():
     if st.session_state.get("authenticated"):
         return True
-
-    # Single-card login layout, matching the clean CEEKAY Homes style.
-    st.markdown(
-        """
-        <style>
-        [data-testid="stSidebar"], [data-testid="collapsedControl"] {display:none !important;}
-        .block-container {
-            max-width: 590px !important;
-            padding-top: 3.2rem !important;
-            padding-bottom: 2rem !important;
-        }
-        .login-card-top {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-bottom: 0;
-            border-radius: 28px 28px 0 0;
-            padding: 28px 34px 18px;
-            text-align: center;
-            box-shadow: 0 20px 55px rgba(15, 23, 42, 0.10);
-        }
-        .login-logo {
-            width: 82px;
-            height: 82px;
-            margin: 0 auto 15px;
-            border-radius: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #ffffff;
-            font-size: 2.15rem;
-            font-weight: 500;
-            background: linear-gradient(145deg, #2563eb, #0f766e);
-            box-shadow: 0 12px 28px rgba(37, 99, 235, 0.22);
-        }
-        .login-brand {
-            color: #0f172a;
-            font-size: 1.95rem;
-            font-weight: 800;
-            letter-spacing: -0.04em;
-            margin: 0;
-        }
-        .login-subtitle {
-            color: #64748b;
-            font-size: 1.02rem;
-            margin: 8px 0 0;
-        }
-        .login-secure {
-            background: #f1f5f9;
-            color: #475569;
-            border-radius: 13px;
-            padding: 12px 16px;
-            margin-top: 20px;
-            font-size: .88rem;
-        }
-        div[data-testid="stForm"] {
-            background: #ffffff !important;
-            border: 1px solid #e2e8f0 !important;
-            border-top: 0 !important;
-            border-radius: 0 0 28px 28px !important;
-            padding: 4px 34px 30px !important;
-            box-shadow: 0 20px 55px rgba(15, 23, 42, 0.10) !important;
-        }
-        div[data-testid="stForm"] h2 {
-            color: #0f172a;
-            font-size: 1.75rem;
-            margin-top: 0;
-            margin-bottom: .2rem;
-        }
-        div[data-testid="stForm"] p {color:#64748b; margin-bottom:1.15rem;}
-        div[data-testid="stTextInput"] input {
-            min-height: 52px;
-            border-radius: 12px;
-            background: #f8fafc;
-        }
-        div[data-testid="stFormSubmitButton"] button {
-            min-height: 52px;
-            border-radius: 12px;
-            border: 0;
-            background: linear-gradient(90deg, #ef4444, #fb4b55);
-            color: #ffffff;
-            font-weight: 700;
-            margin-top: 8px;
-        }
-        div[data-testid="stFormSubmitButton"] button:hover {
-            background: linear-gradient(90deg, #dc2626, #ef4444);
-            color: #ffffff;
-            border: 0;
-        }
-        @media (max-width: 640px) {
-            .block-container {padding: 1.2rem .85rem 2rem !important;}
-            .login-card-top {padding: 24px 20px 15px;}
-            div[data-testid="stForm"] {padding: 4px 20px 25px !important;}
-        }
-        </style>
-        <div class="login-card-top">
-            <div class="login-logo">Rs</div>
-            <div class="login-brand">CEEKAY Finance</div>
-            <div class="login-subtitle">Personal Finance Manager</div>
-            <div class="login-secure">🔒 Secure private access · Your financial data stays in Google Sheets</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
+    st.markdown(f'<div class="finance-title">{APP_TITLE}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="finance-subtitle">Secure personal finance management</div>', unsafe_allow_html=True)
     with st.form("login_form"):
-        st.markdown("## Welcome back")
-        st.markdown("Enter your credentials to continue.")
-        username = st.text_input("Username", placeholder="Enter your username")
-        password = st.text_input("Password", type="password", placeholder="Enter your password")
-        submitted = st.form_submit_button("Sign in", use_container_width=True)
-
+        password = st.text_input("Admin Password", type="password")
+        submitted = st.form_submit_button("Login", use_container_width=True)
     if submitted:
-        admin_cfg = st.secrets.get("admin", {})
-        expected_user = str(admin_cfg.get("username", st.secrets.get("admin_username", "admin")))
-        expected_password = str(admin_cfg.get("password", st.secrets.get("admin_password", "admin123")))
-        if username.strip() == expected_user and password == expected_password:
+        expected = str(st.secrets.get("admin_password", "admin123"))
+        if password == expected:
             st.session_state["authenticated"] = True
-            st.session_state["username"] = username.strip()
             st.rerun()
         else:
-            st.error("Incorrect username or password.")
+            st.error("Incorrect password.")
     return False
 
 
