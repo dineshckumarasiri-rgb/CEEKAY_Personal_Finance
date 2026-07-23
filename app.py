@@ -71,7 +71,9 @@ st.markdown(
     .stApp {background: linear-gradient(135deg, #f7f9fc 0%, #eef2f7 100%); color: #111827;}
     [data-testid="stSidebar"] {background: #111827;}
     [data-testid="stSidebar"] * {color: #f9fafb !important;}
-    [data-testid="stMetric"] {background: white; padding: 18px; border-radius: 16px; border: 1px solid #e5e7eb; box-shadow: 0 5px 20px rgba(15,23,42,.05);}
+    [data-testid="stMetric"] {background: white; padding: 18px; border-radius: 16px; border: 1px solid #e5e7eb; box-shadow: 0 5px 20px rgba(15,23,42,.05); min-height: 128px; overflow: visible;}
+    [data-testid="stMetricValue"] {font-size: clamp(1.35rem, 2.2vw, 2rem) !important; line-height: 1.2 !important; white-space: normal !important; overflow: visible !important; text-overflow: clip !important; word-break: break-word;}
+    [data-testid="stMetricLabel"] {white-space: normal !important; line-height: 1.25 !important;}
     div[data-testid="stForm"] {background: white; padding: 18px; border-radius: 16px; border: 1px solid #e5e7eb;}
     .block-container {padding-top: 1.5rem; padding-bottom: 2.5rem;}
     .finance-title {font-size: 2rem; font-weight: 700; color: #111827; margin-bottom: .1rem;}
@@ -175,6 +177,18 @@ def load_sheet(sheet_name: str) -> pd.DataFrame:
 
 def clear_data_cache():
     load_sheet.clear()
+
+
+def set_flash(message: str, level: str = "success"):
+    st.session_state["flash_message"] = message
+    st.session_state["flash_level"] = level
+
+
+def show_flash():
+    message = st.session_state.pop("flash_message", None)
+    level = st.session_state.pop("flash_level", "success")
+    if message:
+        getattr(st, level, st.success)(message)
 
 
 def append_record(sheet_name: str, record: Dict):
@@ -395,7 +409,7 @@ def assets_page():
     st.subheader("Asset Management")
     tab1, tab2, tab3 = st.tabs(["Add Asset", "Edit / Delete", "Asset List"])
     with tab1:
-        with st.form("add_asset"):
+        with st.form("add_asset", clear_on_submit=True):
             c1, c2 = st.columns(2)
             name = c1.text_input("Asset Name")
             category = c2.selectbox("Category", categories("Asset"))
@@ -416,7 +430,7 @@ def assets_page():
                         "Current Value": current_value, "Ownership %": ownership, "Income Generating": income_gen,
                         "Monthly Income": monthly_income, "Notes": notes, "Created At": now_text(), "Updated At": now_text()
                     })
-                    st.success("Asset saved.")
+                    set_flash("Asset added successfully. The form has been cleared.")
                     st.rerun()
     with tab2:
         df = load_sheet("Assets")
@@ -449,7 +463,7 @@ def income_page():
     st.subheader("Income Management")
     tab1, tab2, tab3 = st.tabs(["Add Income", "Edit / Delete", "Income List"])
     with tab1:
-        with st.form("add_income"):
+        with st.form("add_income", clear_on_submit=True):
             c1, c2 = st.columns(2)
             d = c1.date_input("Date", value=date.today())
             source = c2.text_input("Income Source")
@@ -462,7 +476,7 @@ def income_page():
                     st.error("Income source and a valid amount are required.")
                 else:
                     append_record("Income", {"Record ID": make_id("INC"), "Date": d.strftime(DATE_FMT), "Income Source": source.strip(), "Category": cat, "Amount": amount, "Income Type": income_type, "Description": desc, "Created At": now_text(), "Updated At": now_text()})
-                    st.success("Income saved.")
+                    set_flash("Income added successfully. The form has been cleared.")
                     st.rerun()
     with tab2:
         df = load_sheet("Income")
@@ -486,7 +500,7 @@ def income_page():
 
 def allocation_page():
     st.subheader("Salary & Income Allocation")
-    with st.form("add_allocation"):
+    with st.form("add_allocation", clear_on_submit=True):
         c1, c2 = st.columns(2)
         month = c1.text_input("Month", value=date.today().strftime("%Y-%m"), help="Use YYYY-MM format")
         source = c2.text_input("Income Source", value="Salary")
@@ -496,7 +510,7 @@ def allocation_page():
         notes = st.text_area("Notes")
         if st.form_submit_button("Save Allocation", use_container_width=True):
             append_record("SalaryAllocation", {"Record ID": make_id("SAL"), "Month": month, "Income Source": source, "Allocation Category": category, "Planned Amount": planned_amount, "Planned %": planned_pct, "Notes": notes, "Created At": now_text(), "Updated At": now_text()})
-            st.success("Allocation saved.")
+            set_flash("Salary allocation added successfully. The form has been cleared.")
             st.rerun()
 
     df = load_sheet("SalaryAllocation")
@@ -524,7 +538,7 @@ def expenses_page():
     st.subheader("Expense Management")
     tab1, tab2, tab3 = st.tabs(["Add Expense", "Edit / Delete", "Expense List"])
     with tab1:
-        with st.form("add_expense"):
+        with st.form("add_expense", clear_on_submit=True):
             c1, c2 = st.columns(2)
             d = c1.date_input("Date", value=date.today())
             cat = c2.selectbox("Category", categories("Expense"))
@@ -539,7 +553,7 @@ def expenses_page():
                     st.error("Enter a valid expense amount.")
                 else:
                     append_record("Expenses", {"Record ID": make_id("EXP"), "Date": d.strftime(DATE_FMT), "Category": cat, "Description": desc, "Amount": amount, "Payment Method": method, "Scope": scope, "Recurring": recurring, "Notes": notes, "Created At": now_text(), "Updated At": now_text()})
-                    st.success("Expense saved.")
+                    set_flash("Expense added successfully. The form has been cleared.")
                     st.rerun()
     with tab2:
         df = load_sheet("Expenses")
@@ -565,7 +579,7 @@ def liabilities_page():
     st.subheader("Liability Management")
     tab1, tab2, tab3 = st.tabs(["Add Liability", "Edit / Delete", "Liability Summary"])
     with tab1:
-        with st.form("add_liability"):
+        with st.form("add_liability", clear_on_submit=True):
             c1, c2 = st.columns(2)
             d = c1.date_input("Liability Date", value=date.today())
             name = c2.text_input("Liability Name")
@@ -582,7 +596,7 @@ def liabilities_page():
                     st.error("Liability name and original amount are required.")
                 else:
                     append_record("Liabilities", {"Record ID": make_id("LIA"), "Liability Date": d.strftime(DATE_FMT), "Liability Name": name.strip(), "Category": cat, "Original Amount": original, "Interest Rate %": rate, "Monthly Instalment": instalment, "Due Date": due.strftime(DATE_FMT), "Lender": lender, "Description": desc, "Status": status, "Created At": now_text(), "Updated At": now_text()})
-                    st.success("Liability saved.")
+                    set_flash("Liability added successfully. The form has been cleared.")
                     st.rerun()
     with tab2:
         df = load_sheet("Liabilities")
@@ -621,7 +635,7 @@ def payments_page():
         return
     summary = liability_summary(liabilities, load_sheet("LiabilityPayments"))
     active = summary[summary["Outstanding"] > 0.01]
-    with st.form("add_payment"):
+    with st.form("add_payment", clear_on_submit=True):
         options = active["Record ID"].astype(str).tolist() if not active.empty else summary["Record ID"].astype(str).tolist()
         label_map = {str(r["Record ID"]): f"{r['Liability Name']} — Outstanding {money(r['Outstanding'])}" for _, r in summary.iterrows()}
         lid = st.selectbox("Liability", options, format_func=lambda x: label_map.get(x, x))
@@ -643,7 +657,7 @@ def payments_page():
                 append_record("LiabilityPayments", {"Record ID": make_id("PAY"), "Payment Date": d.strftime(DATE_FMT), "Liability ID": lid, "Liability Name": row["Liability Name"], "Payment Amount": payment_amount, "Principal Amount": principal, "Interest Amount": interest, "Payment Method": method, "Reference No": ref, "Notes": notes, "Created At": now_text(), "Updated At": now_text()})
                 if principal >= row["Outstanding"] - 0.01:
                     update_record("Liabilities", lid, {"Status": "Paid"})
-                st.success("Payment saved.")
+                set_flash("Liability payment added successfully. The form has been cleared.")
                 st.rerun()
     st.subheader("Payment History")
     data_editor_table(load_sheet("LiabilityPayments"), ["Created At", "Updated At"])
@@ -651,7 +665,7 @@ def payments_page():
 
 def budgets_page():
     st.subheader("Monthly Budget")
-    with st.form("add_budget"):
+    with st.form("add_budget", clear_on_submit=True):
         c1, c2 = st.columns(2)
         month = c1.text_input("Month", value=date.today().strftime("%Y-%m"))
         category = c2.selectbox("Category", categories("Expense"))
@@ -659,7 +673,7 @@ def budgets_page():
         notes = st.text_area("Notes")
         if st.form_submit_button("Save Budget", use_container_width=True):
             append_record("Budgets", {"Record ID": make_id("BUD"), "Month": month, "Category": category, "Budget Amount": amount, "Notes": notes, "Created At": now_text(), "Updated At": now_text()})
-            st.success("Budget saved.")
+            set_flash("Budget added successfully. The form has been cleared.")
             st.rerun()
 
     budgets = load_sheet("Budgets")
@@ -688,7 +702,7 @@ def goals_page():
     st.subheader("Savings Goals")
     tab1, tab2 = st.tabs(["Add Goal", "Manage Goals"])
     with tab1:
-        with st.form("add_goal"):
+        with st.form("add_goal", clear_on_submit=True):
             c1, c2 = st.columns(2)
             name = c1.text_input("Goal Name")
             target = c2.number_input("Target Amount", min_value=0.0, step=1000.0)
@@ -698,7 +712,7 @@ def goals_page():
             notes = st.text_area("Notes")
             if st.form_submit_button("Save Goal", use_container_width=True):
                 append_record("SavingsGoals", {"Record ID": make_id("GOA"), "Goal Name": name, "Target Amount": target, "Current Saved": saved, "Target Date": target_date.strftime(DATE_FMT), "Status": status, "Notes": notes, "Created At": now_text(), "Updated At": now_text()})
-                st.success("Goal saved.")
+                set_flash("Savings goal added successfully. The form has been cleared.")
                 st.rerun()
     with tab2:
         df = load_sheet("SavingsGoals")
@@ -752,7 +766,7 @@ def reports_page():
 
 def settings_page():
     st.subheader("Categories & Settings")
-    with st.form("add_category"):
+    with st.form("add_category", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
         cat_type = c1.selectbox("Type", list(DEFAULT_CATEGORIES.keys()))
         category = c2.text_input("New Category")
@@ -761,7 +775,7 @@ def settings_page():
             if category.strip():
                 get_workbook().worksheet("Categories").append_row([cat_type, category.strip(), active])
                 clear_data_cache()
-                st.success("Category added.")
+                set_flash("Category added successfully. The form has been cleared.")
                 st.rerun()
     st.markdown('<div class="small-note">The Google Sheet is the live database. Do not rename worksheet tabs after deployment.</div>', unsafe_allow_html=True)
     data_editor_table(load_sheet("Categories"))
@@ -792,6 +806,8 @@ def main():
 
     st.markdown(f'<div class="finance-title">{page}</div>', unsafe_allow_html=True)
     st.markdown('<div class="finance-subtitle">Manage your financial position with clear records and reports.</div>', unsafe_allow_html=True)
+
+    show_flash()
 
     pages = {
         "Dashboard": dashboard,
