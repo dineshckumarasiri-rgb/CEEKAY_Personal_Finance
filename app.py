@@ -203,6 +203,32 @@ def load_sheet(sheet_name: str) -> pd.DataFrame:
     return pd.DataFrame(records, columns=SHEETS[sheet_name]) if records else pd.DataFrame(columns=SHEETS[sheet_name])
 
 
+def load_sheet_fresh(sheet_name: str) -> pd.DataFrame:
+    """Read the worksheet directly without using Streamlit's data cache.
+
+    This is used for liability payments so newly added, edited, or deleted rows
+    are reflected immediately in the balance and payment-history sections.
+    """
+    ws = ensure_worksheet(get_workbook(), sheet_name)
+    values = ws.get_all_values()
+    if len(values) <= 1:
+        return pd.DataFrame(columns=SHEETS[sheet_name])
+
+    headers = values[0]
+    records = []
+    for row in values[1:]:
+        if not any(str(cell).strip() for cell in row):
+            continue
+        padded = row + [""] * max(0, len(headers) - len(row))
+        records.append({header: padded[index] if index < len(padded) else "" for index, header in enumerate(headers)})
+
+    df = pd.DataFrame(records)
+    for column in SHEETS[sheet_name]:
+        if column not in df.columns:
+            df[column] = ""
+    return df[SHEETS[sheet_name]]
+
+
 def clear_data_cache():
     # Clear all cached sheet data so balances are recalculated from Google Sheets
     # immediately after add, edit, or delete operations.
@@ -736,16 +762,23 @@ def liabilities_page():
 
 def payments_page():
     st.subheader("Liability Payments")
-    if st.session_state.get("payment_delete_success"):
-        st.success(st.session_state.pop("payment_delete_success"))
+    for message_key in ["payment_save_success", "payment_update_success", "payment_delete_success"]:
+        if st.session_state.get(message_key):
+            st.success(st.session_state.pop(message_key))
+
     liabilities = load_sheet("Liabilities")
     if liabilities.empty:
         st.warning("Add a liability before recording payments.")
         return
 
+    # Liability payments are deliberately read without cache. This keeps the
+    # history and liability balances correct immediately after every change.
+    payments = load_sheet_fresh("LiabilityPayments")
+    adjustments = load_sheet("LiabilityAdjustments")
+    summary = liability_summary(liabilities, payments, adjustments)
+
     st.info("Use **Add Payment** to record a payment. Use **Edit / Delete Payment** to correct or remove a wrongly entered payment.")
-    tab1, tab2 = st.tabs(["Add Payment", "Edit / Delete Payment"])
-    summary = liability_summary(liabilities, load_sheet("LiabilityPayments"), load_sheet("LiabilityAdjustments"))
+    tab1, tab2, tab3 = st.tabs(["Add Payment", "Edit / Delete Payment", "Payment History"])
 
     with tab1:
         active = summary[summary["Outstanding"] > 0.01]
@@ -772,10 +805,10 @@ def payments_page():
                 append_record("LiabilityPayments", {"Record ID": make_id("PAY"), "Payment Date": d.strftime(DATE_FMT), "Liability ID": lid, "Liability Name": row["Liability Name"], "Payment Amount": payment_amount, "Principal Amount": principal, "Interest Amount": interest, "Payment Method": method, "Reference No": ref, "Notes": notes, "Created At": now_text(), "Updated At": now_text()})
                 if payment_amount >= row["Outstanding"] - 0.01:
                     update_record("Liabilities", lid, {"Status": "Paid"})
-                st.success(f"Payment of {money(payment_amount)} saved. New balance: {money(max(0.0, row['Outstanding'] - payment_amount))}.")
+                st.session_state["payment_save_success"] = f"Payment of {money(payment_amount)} saved successfully."
+                st.rerun()
 
     with tab2:
-        payments = load_sheet("LiabilityPayments")
         if payments.empty:
             st.info("No liability payments have been recorded.")
         else:
@@ -783,44 +816,56 @@ def payments_page():
                 str(r["Record ID"]): f"{r['Payment Date']} — {r['Liability Name']} — {money(to_float(r['Payment Amount']))}"
                 for _, r in payments.iterrows()
             }
-            payment_id = st.selectbox("Select Payment", payments["Record ID"].astype(str).tolist(), format_func=lambda x: payment_labels.get(x, x), key="payment_manage")
-            prow = payments[payments["Record ID"].astype(str) == payment_id].iloc[0]
-            related_summary = summary[summary["Record ID"].astype(str) == str(prow["Liability ID"])]
-            current_outstanding = float(related_summary.iloc[0]["Outstanding"]) if not related_summary.empty else 0.0
-            old_payment = to_float(prow["Payment Amount"])
-            max_edit = current_outstanding + old_payment
-            with st.form("edit_payment"):
-                c1, c2 = st.columns(2)
-                edit_date = c1.date_input("Payment Date", value=pd.to_datetime(str(prow["Payment Date"])).date())
-                edit_total = c2.number_input("Total Payment Amount", min_value=0.01, max_value=max_edit if max_edit > 0 else old_payment, value=old_payment, step=1000.0)
-                edit_principal = c1.number_input("Principal Portion", min_value=0.0, value=to_float(prow["Principal Amount"]), step=1000.0)
-                edit_interest = c2.number_input("Interest Portion", min_value=0.0, value=to_float(prow["Interest Amount"]), step=100.0)
-                edit_method = c1.selectbox("Payment Method", PAYMENT_METHODS, index=PAYMENT_METHODS.index(str(prow["Payment Method"])) if str(prow["Payment Method"]) in PAYMENT_METHODS else 0)
-                edit_ref = c2.text_input("Reference No", value=str(prow["Reference No"]))
-                edit_notes = st.text_area("Notes", value=str(prow["Notes"]))
-                update_submit = st.form_submit_button("Update Payment", use_container_width=True)
-            if update_submit:
-                if edit_principal + edit_interest > edit_total + 0.01:
-                    st.error("Principal plus interest cannot exceed the total payment amount.")
-                else:
-                    update_record("LiabilityPayments", payment_id, {"Payment Date": edit_date.strftime(DATE_FMT), "Payment Amount": edit_total, "Principal Amount": edit_principal, "Interest Amount": edit_interest, "Payment Method": edit_method, "Reference No": edit_ref, "Notes": edit_notes})
-                    st.success("Payment updated and the liability balance was recalculated.")
-                    st.rerun()
+            valid_ids = [x for x in payments["Record ID"].astype(str).tolist() if x.strip()]
+            if not valid_ids:
+                st.warning("Payment rows exist in Google Sheets, but their Record ID values are blank. Please check the LiabilityPayments worksheet.")
+            else:
+                payment_id = st.selectbox("Select Payment", valid_ids, format_func=lambda x: payment_labels.get(x, x), key="payment_manage")
+                prow = payments[payments["Record ID"].astype(str) == payment_id].iloc[0]
+                related_summary = summary[summary["Record ID"].astype(str) == str(prow["Liability ID"])]
+                current_outstanding = float(related_summary.iloc[0]["Outstanding"]) if not related_summary.empty else 0.0
+                old_payment = to_float(prow["Payment Amount"])
+                max_edit = current_outstanding + old_payment
+                parsed_date = pd.to_datetime(str(prow["Payment Date"]), errors="coerce")
+                default_date = parsed_date.date() if not pd.isna(parsed_date) else date.today()
+                with st.form("edit_payment"):
+                    c1, c2 = st.columns(2)
+                    edit_date = c1.date_input("Payment Date", value=default_date)
+                    edit_total = c2.number_input("Total Payment Amount", min_value=0.01, max_value=max_edit if max_edit > 0 else max(old_payment, 0.01), value=max(old_payment, 0.01), step=1000.0)
+                    edit_principal = c1.number_input("Principal Portion", min_value=0.0, value=to_float(prow["Principal Amount"]), step=1000.0)
+                    edit_interest = c2.number_input("Interest Portion", min_value=0.0, value=to_float(prow["Interest Amount"]), step=100.0)
+                    edit_method = c1.selectbox("Payment Method", PAYMENT_METHODS, index=PAYMENT_METHODS.index(str(prow["Payment Method"])) if str(prow["Payment Method"]) in PAYMENT_METHODS else 0)
+                    edit_ref = c2.text_input("Reference No", value=str(prow["Reference No"]))
+                    edit_notes = st.text_area("Notes", value=str(prow["Notes"]))
+                    update_submit = st.form_submit_button("Update Payment", use_container_width=True)
+                if update_submit:
+                    if edit_principal + edit_interest > edit_total + 0.01:
+                        st.error("Principal plus interest cannot exceed the total payment amount.")
+                    else:
+                        update_record("LiabilityPayments", payment_id, {"Payment Date": edit_date.strftime(DATE_FMT), "Payment Amount": edit_total, "Principal Amount": edit_principal, "Interest Amount": edit_interest, "Payment Method": edit_method, "Reference No": edit_ref, "Notes": edit_notes})
+                        st.session_state["payment_update_success"] = "Payment updated and the liability balance was recalculated."
+                        st.rerun()
 
-            confirm_delete = st.checkbox("Confirm payment deletion", key="delete_payment_confirm")
-            if st.button("Delete Selected Payment", type="primary", disabled=not confirm_delete, use_container_width=True):
-                liability_id = str(prow["Liability ID"])
-                if delete_record("LiabilityPayments", payment_id):
-                    update_record("Liabilities", liability_id, {"Status": "Active"})
-                    clear_data_cache()
-                    st.session_state["payment_delete_success"] = (
-                        "Payment deleted. Principal paid, total paid, outstanding balance, "
-                        "and payment progress were recalculated."
-                    )
-                    st.rerun()
+                confirm_delete = st.checkbox("Confirm payment deletion", key="delete_payment_confirm")
+                if st.button("Delete Selected Payment", type="primary", disabled=not confirm_delete, use_container_width=True):
+                    liability_id = str(prow["Liability ID"])
+                    if delete_record("LiabilityPayments", payment_id):
+                        update_record("Liabilities", liability_id, {"Status": "Active"})
+                        st.session_state["payment_delete_success"] = "Payment deleted. The payment history and outstanding balance were recalculated."
+                        st.rerun()
+                    else:
+                        st.error("The selected payment could not be found in Google Sheets.")
 
-            st.markdown("#### Payment History")
-            data_editor_table(payments, ["Created At", "Updated At"])
+    with tab3:
+        if payments.empty:
+            st.info("No liability payments have been recorded.")
+        else:
+            history = payments.copy()
+            history["Payment Amount"] = history["Payment Amount"].apply(to_float)
+            history["Principal Amount"] = history["Principal Amount"].apply(to_float)
+            history["Interest Amount"] = history["Interest Amount"].apply(to_float)
+            history = history.sort_values(["Payment Date", "Created At"], ascending=False, na_position="last")
+            data_editor_table(history, ["Created At", "Updated At"])
 
 
 def budgets_page():
