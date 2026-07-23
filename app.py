@@ -42,8 +42,8 @@ SHEETS: Dict[str, List[str]] = {
         "Created At", "Updated At"
     ],
     "LiabilityAdjustments": [
-        "Record ID", "Adjustment Date", "Liability ID", "Liability Name",
-        "Added Amount", "Description", "Created At", "Updated At"
+        "Record ID", "Date", "Liability ID", "Liability Name", "Adjustment Type",
+        "Amount", "Description", "Created At", "Updated At"
     ],
     "Budgets": [
         "Record ID", "Month", "Category", "Budget Amount", "Notes", "Created At", "Updated At"
@@ -72,28 +72,16 @@ st.set_page_config(page_title=APP_TITLE, page_icon="💰", layout="wide")
 st.markdown(
     """
     <style>
-    :root { --navy:#0f172a; --blue:#2563eb; --teal:#0f766e; --ink:#111827; }
-    .stApp {background:linear-gradient(135deg,#f7f9fc 0%,#edf3f9 100%);color:var(--ink);}
-    header[data-testid="stHeader"] {height:3.5rem;background:rgba(255,255,255,.94);}
-    .block-container {padding-top:5.4rem !important;padding-bottom:3rem;max-width:1500px;}
-    [data-testid="stSidebar"] {background:linear-gradient(180deg,#111827 0%,#0b1220 100%);}
-    [data-testid="stSidebar"] * {color:#f8fafc !important;}
-    h1,h2,h3,h4,h5,h6,.finance-title {line-height:1.25 !important;overflow:visible !important;padding-top:.12em !important;}
-    .finance-title {font-size:2.1rem;font-weight:760;color:#0f172a;margin:0 0 .2rem;}
-    .finance-subtitle {color:#64748b;margin:0 0 1.35rem;font-size:1.02rem;}
-    [data-testid="stMetric"] {background:#fff;padding:20px 18px;min-height:142px;border-radius:20px;border:1px solid #e2e8f0;box-shadow:0 10px 28px rgba(15,23,42,.06);overflow:visible !important;min-width:0;}
-    [data-testid="stMetricLabel"] {font-size:.95rem;}
-    [data-testid="stMetricValue"], [data-testid="stMetricValue"] > div {font-size:clamp(1.05rem,1.55vw,1.65rem) !important;line-height:1.28 !important;white-space:nowrap !important;overflow:visible !important;text-overflow:clip !important;word-break:normal !important;max-width:none !important;width:auto !important;}
-    div[data-testid="stForm"] {background:rgba(255,255,255,.98);padding:24px;border-radius:20px;border:1px solid #e2e8f0;box-shadow:0 10px 30px rgba(15,23,42,.05);}
-    .section-card {background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:20px;margin-bottom:16px;box-shadow:0 8px 24px rgba(15,23,42,.05)}
-    .small-note {font-size:.85rem;color:#64748b;}
-    div.stButton > button, div[data-testid="stFormSubmitButton"] button {border-radius:12px;min-height:44px;font-weight:650;}
-    div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, textarea {border-radius:12px !important;}
-    .login-logo {width:86px;height:86px;border-radius:24px;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:2.25rem;background:linear-gradient(135deg,#2563eb,#0f766e);}
-    .login-name {font-size:2rem;font-weight:780;line-height:1.25;color:#0f172a;}
-    .login-sub {color:#64748b;margin:.35rem 0 1.1rem;}
-    .login-note {background:#f1f5f9;border-radius:13px;padding:12px;color:#475569;font-size:.88rem;}
-    @media(max-width:900px){.block-container{padding-top:4.8rem !important;}[data-testid="stMetric"]{min-height:120px;padding:16px;}[data-testid="stMetricValue"]{font-size:1.35rem !important;}}
+    .stApp {background: linear-gradient(135deg, #f7f9fc 0%, #eef2f7 100%); color: #111827;}
+    [data-testid="stSidebar"] {background: #111827;}
+    [data-testid="stSidebar"] * {color: #f9fafb !important;}
+    [data-testid="stMetric"] {background: white; padding: 18px; border-radius: 16px; border: 1px solid #e5e7eb; box-shadow: 0 5px 20px rgba(15,23,42,.05);}
+    div[data-testid="stForm"] {background: white; padding: 18px; border-radius: 16px; border: 1px solid #e5e7eb;}
+    .block-container {padding-top: 1.5rem; padding-bottom: 2.5rem;}
+    .finance-title {font-size: 2rem; font-weight: 700; color: #111827; margin-bottom: .1rem;}
+    .finance-subtitle {color: #6b7280; margin-bottom: 1rem;}
+    .small-note {font-size:.85rem;color:#6b7280;}
+    .section-card {background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 4px 16px rgba(15,23,42,.04)}
     </style>
     """,
     unsafe_allow_html=True,
@@ -140,39 +128,25 @@ def get_workbook():
     workbook_name = st.secrets.get("workbook_name", WORKBOOK_NAME)
     try:
         book = client.open(workbook_name)
-    except gspread.SpreadsheetNotFound as exc:
-        raise RuntimeError(
-            f"Google Sheet '{workbook_name}' was not found. Create it manually and share it with the service-account email."
-        ) from exc
+    except gspread.SpreadsheetNotFound:
+        book = client.create(workbook_name)
     initialize_workbook(book)
     return book
 
 
-def ensure_worksheet(book, sheet_name: str):
-    """Return a worksheet, creating and initializing it when it is missing."""
-    headers = SHEETS[sheet_name]
-    try:
-        ws = book.worksheet(sheet_name)
-    except gspread.WorksheetNotFound:
-        ws = book.add_worksheet(
-            title=sheet_name,
-            rows=2000,
-            cols=max(20, len(headers) + 2),
-        )
-        ws.append_row(headers)
-        return ws
-
-    first_row = ws.row_values(1)
-    if not first_row:
-        ws.append_row(headers)
-    elif first_row != headers:
-        ws.update("A1", [headers])
-    return ws
-
-
 def initialize_workbook(book):
-    for name in SHEETS:
-        ensure_worksheet(book, name)
+    existing = {ws.title for ws in book.worksheets()}
+    for name, headers in SHEETS.items():
+        if name not in existing:
+            ws = book.add_worksheet(title=name, rows=2000, cols=max(20, len(headers) + 2))
+            ws.append_row(headers)
+        else:
+            ws = book.worksheet(name)
+            first_row = ws.row_values(1)
+            if not first_row:
+                ws.append_row(headers)
+            elif first_row != headers:
+                ws.update("A1", [headers])
     try:
         default_sheet = book.worksheet("Sheet1")
         if len(book.worksheets()) > 1 and not default_sheet.get_all_values():
@@ -198,7 +172,13 @@ def initialize_workbook(book):
 
 @st.cache_data(ttl=60, show_spinner=False)
 def load_sheet(sheet_name: str) -> pd.DataFrame:
-    ws = ensure_worksheet(get_workbook(), sheet_name)
+    book = get_workbook()
+    try:
+        ws = book.worksheet(sheet_name)
+    except gspread.WorksheetNotFound:
+        headers = SHEETS[sheet_name]
+        ws = book.add_worksheet(title=sheet_name, rows=2000, cols=max(20, len(headers) + 2))
+        ws.append_row(headers)
     records = ws.get_all_records()
     return pd.DataFrame(records, columns=SHEETS[sheet_name]) if records else pd.DataFrame(columns=SHEETS[sheet_name])
 
@@ -210,12 +190,12 @@ def clear_data_cache():
 def append_record(sheet_name: str, record: Dict):
     headers = SHEETS[sheet_name]
     row = [record.get(header, "") for header in headers]
-    ensure_worksheet(get_workbook(), sheet_name).append_row(row, value_input_option="USER_ENTERED")
+    get_workbook().worksheet(sheet_name).append_row(row, value_input_option="USER_ENTERED")
     clear_data_cache()
 
 
 def update_record(sheet_name: str, record_id: str, updates: Dict) -> bool:
-    ws = ensure_worksheet(get_workbook(), sheet_name)
+    ws = get_workbook().worksheet(sheet_name)
     values = ws.get_all_values()
     if not values:
         return False
@@ -236,7 +216,7 @@ def update_record(sheet_name: str, record_id: str, updates: Dict) -> bool:
 
 
 def delete_record(sheet_name: str, record_id: str) -> bool:
-    ws = ensure_worksheet(get_workbook(), sheet_name)
+    ws = get_workbook().worksheet(sheet_name)
     values = ws.get_all_values()
     if not values:
         return False
@@ -281,38 +261,27 @@ def data_editor_table(df: pd.DataFrame, hide_cols: Optional[List[str]] = None):
 def login():
     if st.session_state.get("authenticated"):
         return True
-
-    left, centre, right = st.columns([1, 1.65, 1])
-    with centre:
-        with st.form("login_form"):
-            st.markdown(
-                '<div style="text-align:center;padding:.25rem 0 .7rem;">'
-                '<div class="login-logo">Rs</div>'
-                '<div class="login-name">CEEKAY Finance</div>'
-                '<div class="login-sub">Personal Finance Manager</div>'
-                '<div class="login-note">🔒 Secure private access · Your financial data stays in Google Sheets</div>'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-            username = st.text_input("Username", placeholder="Enter your username")
-            password = st.text_input("Password", type="password", placeholder="Enter your password")
-            submitted = st.form_submit_button("Sign in", use_container_width=True)
-
-        if submitted:
-            admin_cfg = st.secrets.get("admin", {})
-            expected_user = str(admin_cfg.get("username", st.secrets.get("admin_username", "admin")))
-            expected_pass = str(admin_cfg.get("password", st.secrets.get("admin_password", "admin123")))
-            if username == expected_user and password == expected_pass:
-                st.session_state["authenticated"] = True
-                st.session_state["username"] = username
-                st.rerun()
-            else:
-                st.error("Incorrect username or password.")
+    st.markdown(f'<div class="finance-title">{APP_TITLE}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="finance-subtitle">Secure personal finance management</div>', unsafe_allow_html=True)
+    with st.form("login_form"):
+        password = st.text_input("Admin Password", type="password")
+        submitted = st.form_submit_button("Login", use_container_width=True)
+    if submitted:
+        expected = str(st.secrets.get("admin_password", "admin123"))
+        if password == expected:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
     return False
 
 
 def liability_summary(liabilities: pd.DataFrame, payments: pd.DataFrame, adjustments: Optional[pd.DataFrame] = None) -> pd.DataFrame:
-    columns = ["Record ID", "Liability Name", "Original Amount", "Added Amount", "Current Total", "Principal Paid", "Interest Paid", "Total Paid", "Outstanding", "Progress %", "Status"]
+    columns = [
+        "Record ID", "Liability Name", "Original Amount", "Additional Amounts",
+        "Interest / Fees Added", "Current Total Liability", "Principal Paid",
+        "Interest Paid", "Total Paid", "Outstanding", "Progress %", "Calculated Status"
+    ]
     if liabilities.empty:
         return pd.DataFrame(columns=columns)
 
@@ -320,7 +289,7 @@ def liability_summary(liabilities: pd.DataFrame, payments: pd.DataFrame, adjustm
     for col in ["Payment Amount", "Principal Amount", "Interest Amount"]:
         if col in p:
             p[col] = p[col].apply(to_float)
-    grouped = p.groupby("Liability ID", dropna=False).agg(
+    grouped_payments = p.groupby("Liability ID", dropna=False).agg(
         Principal_Paid=("Principal Amount", "sum"),
         Interest_Paid=("Interest Amount", "sum"),
         Total_Paid=("Payment Amount", "sum"),
@@ -328,24 +297,43 @@ def liability_summary(liabilities: pd.DataFrame, payments: pd.DataFrame, adjustm
 
     a = adjustments.copy() if adjustments is not None else pd.DataFrame()
     if not a.empty:
-        a["Added Amount"] = a["Added Amount"].apply(to_float)
-        added = a.groupby("Liability ID", dropna=False)["Added Amount"].sum().reset_index(name="Added_Amount")
+        a["Amount"] = a["Amount"].apply(to_float)
+        a["Principal_Addition"] = a.apply(
+            lambda r: r["Amount"] if str(r.get("Adjustment Type", "")) == "Additional Liability" else 0.0, axis=1
+        )
+        a["Interest_Addition"] = a.apply(
+            lambda r: r["Amount"] if str(r.get("Adjustment Type", "")) in ["Interest Charge", "Fee / Charge"] else 0.0, axis=1
+        )
+        grouped_adjustments = a.groupby("Liability ID", dropna=False).agg(
+            Additional_Amounts=("Principal_Addition", "sum"),
+            Interest_Fees_Added=("Interest_Addition", "sum"),
+        ).reset_index()
     else:
-        added = pd.DataFrame(columns=["Liability ID", "Added_Amount"])
+        grouped_adjustments = pd.DataFrame(columns=["Liability ID", "Additional_Amounts", "Interest_Fees_Added"])
 
     result = liabilities.copy()
     result["Original Amount"] = result["Original Amount"].apply(to_float)
-    result = result.merge(grouped, left_on="Record ID", right_on="Liability ID", how="left")
+    result = result.merge(grouped_payments, left_on="Record ID", right_on="Liability ID", how="left")
     result = result.drop(columns=["Liability ID"], errors="ignore")
-    result = result.merge(added, left_on="Record ID", right_on="Liability ID", how="left")
+    result = result.merge(grouped_adjustments, left_on="Record ID", right_on="Liability ID", how="left")
     result = result.drop(columns=["Liability ID"], errors="ignore")
-    for col in ["Principal_Paid", "Interest_Paid", "Total_Paid", "Added_Amount"]:
+
+    for col in ["Principal_Paid", "Interest_Paid", "Total_Paid", "Additional_Amounts", "Interest_Fees_Added"]:
         result[col] = result[col].fillna(0.0)
-    result["Current Total"] = result["Original Amount"] + result["Added_Amount"]
-    result["Outstanding"] = (result["Current Total"] - result["Principal_Paid"]).clip(lower=0)
-    result["Progress %"] = result.apply(lambda r: min(100.0, (r["Principal_Paid"] / r["Current Total"] * 100) if r["Current Total"] else 0), axis=1)
+
+    result["Current Total Liability"] = result["Original Amount"] + result["Additional_Amounts"] + result["Interest_Fees_Added"]
+    result["Outstanding"] = (result["Current Total Liability"] - result["Total_Paid"]).clip(lower=0)
+    result["Progress %"] = result.apply(
+        lambda r: min(100.0, (r["Total_Paid"] / r["Current Total Liability"] * 100) if r["Current Total Liability"] else 0), axis=1
+    )
     result["Calculated Status"] = result["Outstanding"].apply(lambda x: "Paid" if x <= 0.01 else "Active")
-    return result.rename(columns={"Added_Amount":"Added Amount", "Principal_Paid":"Principal Paid", "Interest_Paid":"Interest Paid", "Total_Paid":"Total Paid"})
+    return result.rename(columns={
+        "Principal_Paid": "Principal Paid",
+        "Interest_Paid": "Interest Paid",
+        "Total_Paid": "Total Paid",
+        "Additional_Amounts": "Additional Amounts",
+        "Interest_Fees_Added": "Interest / Fees Added",
+    })
 
 
 def dashboard():
@@ -621,11 +609,9 @@ def expenses_page():
 
 def liabilities_page():
     st.subheader("Liability Management")
-    tab1, tab2, tab3, tab4 = st.tabs(["Add Liability", "Add Amount", "Edit / Delete", "Liability Summary"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Add Liability", "Add Amount / Interest", "Edit / Delete", "Liability Summary"])
+
     with tab1:
-        saved_message = st.session_state.pop("liability_saved_message", None)
-        if saved_message:
-            st.success(saved_message)
         with st.form("add_liability", clear_on_submit=True):
             c1, c2 = st.columns(2)
             d = c1.date_input("Liability Date", value=date.today())
@@ -638,40 +624,44 @@ def liabilities_page():
             lender = c2.text_input("Lender")
             desc = st.text_area("Description")
             status = st.selectbox("Status", ["Active", "On Hold", "Paid"])
-            if st.form_submit_button("Save Liability", use_container_width=True):
-                if not name.strip() or original <= 0:
-                    st.error("Liability name and original amount are required.")
-                else:
-                    append_record("Liabilities", {"Record ID": make_id("LIA"), "Liability Date": d.strftime(DATE_FMT), "Liability Name": name.strip(), "Category": cat, "Original Amount": original, "Interest Rate %": rate, "Monthly Instalment": instalment, "Due Date": due.strftime(DATE_FMT), "Lender": lender, "Description": desc, "Status": status, "Created At": now_text(), "Updated At": now_text()})
-                    st.session_state["liability_saved_message"] = f"Liability '{name.strip()}' was added successfully."
-                    st.rerun()
+            submitted = st.form_submit_button("Save Liability", use_container_width=True)
+        if submitted:
+            if not name.strip() or original <= 0:
+                st.error("Liability name and original amount are required.")
+            else:
+                append_record("Liabilities", {"Record ID": make_id("LIA"), "Liability Date": d.strftime(DATE_FMT), "Liability Name": name.strip(), "Category": cat, "Original Amount": original, "Interest Rate %": rate, "Monthly Instalment": instalment, "Due Date": due.strftime(DATE_FMT), "Lender": lender, "Description": desc, "Status": status, "Created At": now_text(), "Updated At": now_text()})
+                st.success(f"Liability '{name.strip()}' added successfully.")
+
     with tab2:
-        df = load_sheet("Liabilities")
-        if df.empty:
-            st.info("Add a liability first.")
+        liabilities = load_sheet("Liabilities")
+        if liabilities.empty:
+            st.info("Add a liability before recording additional amounts or interest.")
         else:
-            labels = {str(r["Record ID"]): str(r["Liability Name"]) for _, r in df.iterrows()}
-            with st.form("add_liability_amount", clear_on_submit=True):
-                lid = st.selectbox("Select Liability", list(labels), format_func=lambda x: labels[x])
+            with st.form("add_liability_adjustment", clear_on_submit=True):
+                ids = liabilities["Record ID"].astype(str).tolist()
+                names = {str(r["Record ID"]): str(r["Liability Name"]) for _, r in liabilities.iterrows()}
+                lid = st.selectbox("Liability", ids, format_func=lambda x: names.get(x, x))
                 c1, c2 = st.columns(2)
-                adj_date = c1.date_input("Date", value=date.today())
-                added_amount = c2.number_input("Additional Amount", min_value=0.0, step=1000.0, help="Use this when the credit card or other liability increases after a new purchase or charge.")
-                description = st.text_area("Description", placeholder="Example: Additional credit-card purchase")
-                if st.form_submit_button("Add to Liability", use_container_width=True):
-                    if added_amount <= 0:
-                        st.error("Enter a valid additional amount.")
-                    else:
-                        append_record("LiabilityAdjustments", {
-                            "Record ID": make_id("LAD"), "Adjustment Date": adj_date.strftime(DATE_FMT),
-                            "Liability ID": lid, "Liability Name": labels[lid], "Added Amount": added_amount,
-                            "Description": description, "Created At": now_text(), "Updated At": now_text()
-                        })
-                        update_record("Liabilities", lid, {"Status": "Active"})
-                        st.session_state["liability_added_message"] = f"{money(added_amount)} added to {labels[lid]}."
-                        st.rerun()
-            msg = st.session_state.pop("liability_added_message", None)
-            if msg:
-                st.success(msg)
+                adjustment_date = c1.date_input("Date", value=date.today())
+                adjustment_type = c2.selectbox("Entry Type", ["Additional Liability", "Interest Charge", "Fee / Charge"])
+                amount = c1.number_input("Amount", min_value=0.0, step=1000.0)
+                description = c2.text_input("Description", placeholder="e.g. Credit-card purchase or monthly interest")
+                adjustment_submit = st.form_submit_button("Add to Liability", use_container_width=True)
+            if adjustment_submit:
+                if amount <= 0:
+                    st.error("Enter an amount greater than zero.")
+                else:
+                    append_record("LiabilityAdjustments", {
+                        "Record ID": make_id("ADJ"), "Date": adjustment_date.strftime(DATE_FMT),
+                        "Liability ID": lid, "Liability Name": names.get(lid, ""),
+                        "Adjustment Type": adjustment_type, "Amount": amount,
+                        "Description": description, "Created At": now_text(), "Updated At": now_text()
+                    })
+                    st.success(f"{adjustment_type} of {money(amount)} added successfully.")
+            adjustments = load_sheet("LiabilityAdjustments")
+            if not adjustments.empty:
+                st.markdown("#### Added Amounts and Interest History")
+                data_editor_table(adjustments, ["Created At", "Updated At"])
 
     with tab3:
         df = load_sheet("Liabilities")
@@ -688,32 +678,20 @@ def liabilities_page():
                     st.rerun()
             confirm = st.checkbox("Confirm liability deletion", key="delete_liability_confirm")
             if st.button("Delete Liability", type="primary", disabled=not confirm):
-                related = load_sheet("LiabilityPayments")
-                if not related.empty and (related["Liability ID"].astype(str) == rid).any():
-                    st.error("Delete the related liability payments first.")
+                related_payments = load_sheet("LiabilityPayments")
+                related_adjustments = load_sheet("LiabilityAdjustments")
+                has_payments = not related_payments.empty and (related_payments["Liability ID"].astype(str) == rid).any()
+                has_adjustments = not related_adjustments.empty and (related_adjustments["Liability ID"].astype(str) == rid).any()
+                if has_payments or has_adjustments:
+                    st.error("Delete the related payments and added amounts/interest first.")
                 else:
                     delete_record("Liabilities", rid)
                     st.rerun()
+
     with tab4:
         summary = liability_summary(load_sheet("Liabilities"), load_sheet("LiabilityPayments"), load_sheet("LiabilityAdjustments"))
         if not summary.empty:
-            summary_view = summary[["Record ID", "Liability Name", "Original Amount", "Added Amount", "Current Total", "Principal Paid", "Interest Paid", "Total Paid", "Outstanding", "Progress %", "Calculated Status"]].copy()
-            summary_view = summary_view.rename(columns={"Outstanding": "Final Balance"})
-            st.dataframe(
-                summary_view,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Original Amount": st.column_config.NumberColumn(format="LKR %.2f"),
-                    "Added Amount": st.column_config.NumberColumn(format="LKR %.2f"),
-                    "Current Total": st.column_config.NumberColumn(format="LKR %.2f"),
-                    "Principal Paid": st.column_config.NumberColumn(format="LKR %.2f"),
-                    "Interest Paid": st.column_config.NumberColumn(format="LKR %.2f"),
-                    "Total Paid": st.column_config.NumberColumn(format="LKR %.2f"),
-                    "Final Balance": st.column_config.NumberColumn(format="LKR %.2f"),
-                    "Progress %": st.column_config.ProgressColumn(min_value=0.0, max_value=100.0, format="%.1f%%"),
-                },
-            )
+            data_editor_table(summary[["Record ID", "Liability Name", "Original Amount", "Additional Amounts", "Interest / Fees Added", "Current Total Liability", "Total Paid", "Outstanding", "Progress %", "Calculated Status"]])
         else:
             st.info("No liabilities recorded.")
 
@@ -725,149 +703,80 @@ def payments_page():
         st.warning("Add a liability before recording payments.")
         return
 
-    payments = load_sheet("LiabilityPayments")
-    summary = liability_summary(liabilities, payments, load_sheet("LiabilityAdjustments"))
+    tab1, tab2 = st.tabs(["Add Payment", "Edit / Delete Payment"])
+    summary = liability_summary(liabilities, load_sheet("LiabilityPayments"), load_sheet("LiabilityAdjustments"))
 
-    # Show the current position of every liability before entering a payment.
-    st.markdown("### Current Liability Balances")
-    balance_view = summary[[
-        "Liability Name", "Original Amount", "Added Amount", "Current Total", "Total Paid", "Principal Paid",
-        "Interest Paid", "Outstanding", "Progress %", "Calculated Status"
-    ]].copy()
-    balance_view = balance_view.rename(columns={"Outstanding": "Final Balance"})
-    st.dataframe(
-        balance_view,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Original Amount": st.column_config.NumberColumn(format="LKR %.2f"),
-            "Added Amount": st.column_config.NumberColumn(format="LKR %.2f"),
-            "Current Total": st.column_config.NumberColumn(format="LKR %.2f"),
-            "Total Paid": st.column_config.NumberColumn(format="LKR %.2f"),
-            "Principal Paid": st.column_config.NumberColumn(format="LKR %.2f"),
-            "Interest Paid": st.column_config.NumberColumn(format="LKR %.2f"),
-            "Final Balance": st.column_config.NumberColumn(format="LKR %.2f"),
-            "Progress %": st.column_config.ProgressColumn(min_value=0.0, max_value=100.0, format="%.1f%%"),
-        },
-    )
-
-    active = summary[summary["Outstanding"] > 0.01]
-    if active.empty:
-        st.success("All recorded liabilities have been fully paid.")
-    else:
-        st.markdown("### Add Payment")
-        options = active["Record ID"].astype(str).tolist()
-        label_map = {
-            str(r["Record ID"]): f"{r['Liability Name']} — Balance {money(r['Outstanding'])}"
-            for _, r in active.iterrows()
-        }
-
-        lid = st.selectbox(
-            "Select Liability",
-            options,
-            format_func=lambda x: label_map.get(x, x),
-            key="payment_liability_selector",
-        )
-        row = active[active["Record ID"].astype(str) == lid].iloc[0]
-
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Current Liability Total", money(row["Current Total"]))
-        c2.metric("Paid Toward Balance", money(row["Principal Paid"]))
-        c3.metric("Final Balance", money(row["Outstanding"]))
-
+    with tab1:
+        active = summary[summary["Outstanding"] > 0.01]
         with st.form("add_payment", clear_on_submit=True):
+            options = active["Record ID"].astype(str).tolist() if not active.empty else summary["Record ID"].astype(str).tolist()
+            label_map = {str(r["Record ID"]): f"{r['Liability Name']} — Outstanding {money(r['Outstanding'])}" for _, r in summary.iterrows()}
+            lid = st.selectbox("Liability", options, format_func=lambda x: label_map.get(x, x))
+            row = summary[summary["Record ID"].astype(str) == lid].iloc[0]
             c1, c2 = st.columns(2)
             d = c1.date_input("Payment Date", value=date.today())
-            amount_paid = c2.number_input(
-                "Amount Paid",
-                min_value=0.0,
-                max_value=float(row["Outstanding"]),
-                step=1000.0,
-                help="This amount will be deducted from the current liability balance.",
-            )
-            includes_interest = st.checkbox(
-                "Part of this payment is interest or another charge",
-                value=False,
-                help="Leave this unticked for credit-card payments and other simple liabilities.",
-            )
-            interest = 0.0
-            if includes_interest:
-                interest = st.number_input(
-                    "Interest / Charges Included",
-                    min_value=0.0,
-                    max_value=float(amount_paid),
-                    step=100.0,
-                )
-            principal = max(0.0, amount_paid - interest)
-            st.caption(
-                f"Balance reduction: {money(principal)}  |  "
-                f"Balance after payment: {money(max(0.0, row['Outstanding'] - principal))}"
-            )
-
-            c1, c2 = st.columns(2)
+            payment_amount = c2.number_input("Total Payment Amount", min_value=0.0, max_value=float(row["Outstanding"]), step=1000.0)
+            principal = c1.number_input("Principal Portion", min_value=0.0, max_value=float(row["Outstanding"]), step=1000.0, help="Optional breakdown only. The total payment reduces the outstanding balance.")
+            interest = c2.number_input("Interest Portion", min_value=0.0, step=100.0, help="Optional breakdown of the payment.")
             method = c1.selectbox("Payment Method", PAYMENT_METHODS)
             ref = c2.text_input("Reference No")
             notes = st.text_area("Notes")
-
             submitted = st.form_submit_button("Save Payment", use_container_width=True)
-            if submitted:
-                if amount_paid <= 0:
-                    st.error("Enter the amount you paid.")
-                elif interest > amount_paid:
-                    st.error("Interest or charges cannot exceed the payment amount.")
-                elif principal <= 0:
-                    st.error("The payment must include an amount that reduces the liability balance.")
+        if submitted:
+            if payment_amount <= 0:
+                st.error("Enter a valid payment amount.")
+            elif principal + interest > payment_amount + 0.01:
+                st.error("Principal plus interest cannot exceed the total payment amount.")
+            else:
+                append_record("LiabilityPayments", {"Record ID": make_id("PAY"), "Payment Date": d.strftime(DATE_FMT), "Liability ID": lid, "Liability Name": row["Liability Name"], "Payment Amount": payment_amount, "Principal Amount": principal, "Interest Amount": interest, "Payment Method": method, "Reference No": ref, "Notes": notes, "Created At": now_text(), "Updated At": now_text()})
+                if payment_amount >= row["Outstanding"] - 0.01:
+                    update_record("Liabilities", lid, {"Status": "Paid"})
+                st.success(f"Payment of {money(payment_amount)} saved. New balance: {money(max(0.0, row['Outstanding'] - payment_amount))}.")
+
+    with tab2:
+        payments = load_sheet("LiabilityPayments")
+        if payments.empty:
+            st.info("No liability payments have been recorded.")
+        else:
+            payment_labels = {
+                str(r["Record ID"]): f"{r['Payment Date']} — {r['Liability Name']} — {money(to_float(r['Payment Amount']))}"
+                for _, r in payments.iterrows()
+            }
+            payment_id = st.selectbox("Select Payment", payments["Record ID"].astype(str).tolist(), format_func=lambda x: payment_labels.get(x, x), key="payment_manage")
+            prow = payments[payments["Record ID"].astype(str) == payment_id].iloc[0]
+            related_summary = summary[summary["Record ID"].astype(str) == str(prow["Liability ID"])]
+            current_outstanding = float(related_summary.iloc[0]["Outstanding"]) if not related_summary.empty else 0.0
+            old_payment = to_float(prow["Payment Amount"])
+            max_edit = current_outstanding + old_payment
+            with st.form("edit_payment"):
+                c1, c2 = st.columns(2)
+                edit_date = c1.date_input("Payment Date", value=pd.to_datetime(str(prow["Payment Date"])).date())
+                edit_total = c2.number_input("Total Payment Amount", min_value=0.01, max_value=max_edit if max_edit > 0 else old_payment, value=old_payment, step=1000.0)
+                edit_principal = c1.number_input("Principal Portion", min_value=0.0, value=to_float(prow["Principal Amount"]), step=1000.0)
+                edit_interest = c2.number_input("Interest Portion", min_value=0.0, value=to_float(prow["Interest Amount"]), step=100.0)
+                edit_method = c1.selectbox("Payment Method", PAYMENT_METHODS, index=PAYMENT_METHODS.index(str(prow["Payment Method"])) if str(prow["Payment Method"]) in PAYMENT_METHODS else 0)
+                edit_ref = c2.text_input("Reference No", value=str(prow["Reference No"]))
+                edit_notes = st.text_area("Notes", value=str(prow["Notes"]))
+                update_submit = st.form_submit_button("Update Payment", use_container_width=True)
+            if update_submit:
+                if edit_principal + edit_interest > edit_total + 0.01:
+                    st.error("Principal plus interest cannot exceed the total payment amount.")
                 else:
-                    append_record(
-                        "LiabilityPayments",
-                        {
-                            "Record ID": make_id("PAY"),
-                            "Payment Date": d.strftime(DATE_FMT),
-                            "Liability ID": lid,
-                            "Liability Name": row["Liability Name"],
-                            "Payment Amount": amount_paid,
-                            "Principal Amount": principal,
-                            "Interest Amount": interest,
-                            "Payment Method": method,
-                            "Reference No": ref,
-                            "Notes": notes,
-                            "Created At": now_text(),
-                            "Updated At": now_text(),
-                        },
-                    )
-                    new_balance = max(0.0, float(row["Outstanding"]) - principal)
-                    if new_balance <= 0.01:
-                        update_record("Liabilities", lid, {"Status": "Paid"})
-                    elif str(row.get("Status", "")) == "Paid":
-                        update_record("Liabilities", lid, {"Status": "Active"})
-                    st.session_state["payment_saved_message"] = (
-                        f"Payment of {money(amount_paid)} added to {row['Liability Name']}. "
-                        f"Final balance: {money(new_balance)}."
-                    )
+                    update_record("LiabilityPayments", payment_id, {"Payment Date": edit_date.strftime(DATE_FMT), "Payment Amount": edit_total, "Principal Amount": edit_principal, "Interest Amount": edit_interest, "Payment Method": edit_method, "Reference No": edit_ref, "Notes": edit_notes})
+                    st.success("Payment updated and the liability balance was recalculated.")
                     st.rerun()
 
-    message = st.session_state.pop("payment_saved_message", None)
-    if message:
-        st.success(message)
+            confirm_delete = st.checkbox("Confirm payment deletion", key="delete_payment_confirm")
+            if st.button("Delete Selected Payment", type="primary", disabled=not confirm_delete, use_container_width=True):
+                liability_id = str(prow["Liability ID"])
+                if delete_record("LiabilityPayments", payment_id):
+                    update_record("Liabilities", liability_id, {"Status": "Active"})
+                    st.success("Payment deleted and the liability balance was recalculated.")
+                    st.rerun()
 
-    st.markdown("### Payment History")
-    history = load_sheet("LiabilityPayments")
-    if not history.empty:
-        history = history.copy()
-        for col in ["Payment Amount", "Principal Amount", "Interest Amount"]:
-            history[col] = history[col].apply(to_float)
-        st.dataframe(
-            history.drop(columns=["Created At", "Updated At"], errors="ignore"),
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Payment Amount": st.column_config.NumberColumn(format="LKR %.2f"),
-                "Principal Amount": st.column_config.NumberColumn(format="LKR %.2f"),
-                "Interest Amount": st.column_config.NumberColumn(format="LKR %.2f"),
-            },
-        )
-    else:
-        st.info("No liability payments recorded yet.")
+            st.markdown("#### Payment History")
+            data_editor_table(payments, ["Created At", "Updated At"])
+
 
 def budgets_page():
     st.subheader("Monthly Budget")
@@ -941,10 +850,10 @@ def goals_page():
 
 def reports_page():
     st.subheader("Reports & Data Export")
-    report = st.selectbox("Select Report", ["Assets", "Income", "Expenses", "Liabilities", "Liability Payments", "Liability Additions", "Salary Allocation", "Budgets", "Savings Goals", "Monthly Summary"])
+    report = st.selectbox("Select Report", ["Assets", "Income", "Expenses", "Liabilities", "Liability Payments", "Liability Adjustments", "Salary Allocation", "Budgets", "Savings Goals", "Monthly Summary"])
     mapping = {
         "Assets": "Assets", "Income": "Income", "Expenses": "Expenses", "Liabilities": "Liabilities",
-        "Liability Payments": "LiabilityPayments", "Liability Additions": "LiabilityAdjustments", "Salary Allocation": "SalaryAllocation",
+        "Liability Payments": "LiabilityPayments", "Liability Adjustments": "LiabilityAdjustments", "Salary Allocation": "SalaryAllocation",
         "Budgets": "Budgets", "Savings Goals": "SavingsGoals"
     }
     if report in mapping:
