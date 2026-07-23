@@ -447,6 +447,7 @@ def dashboard():
     expenses = load_sheet("Expenses")
     liabilities = load_sheet("Liabilities")
     payments = load_sheet("LiabilityPayments")
+    adjustments = load_sheet("LiabilityAdjustments")
     goals = load_sheet("SavingsGoals")
 
     for col in ["Current Value", "Monthly Income"]:
@@ -457,7 +458,7 @@ def dashboard():
     if "Amount" in expenses:
         expenses["Amount"] = expenses["Amount"].apply(to_float)
 
-    liab = liability_summary(liabilities, payments, load_sheet("LiabilityAdjustments"))
+    liab = liability_summary(liabilities, payments, adjustments)
     total_assets = assets["Current Value"].sum() if not assets.empty else 0
     outstanding = liab["Outstanding"].sum() if not liab.empty else 0
     net_worth = total_assets - outstanding
@@ -521,6 +522,98 @@ def dashboard():
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Add expense records to display this chart.")
+
+    st.subheader("Liability Trend")
+    if liabilities.empty:
+        st.info("Add liabilities to display the liability trend.")
+    else:
+        liability_names = liabilities["Liability Name"].fillna("").astype(str).tolist()
+        trend_options = ["All Liabilities"] + list(dict.fromkeys(name for name in liability_names if name.strip()))
+        selected_liability = st.selectbox(
+            "View liability trend",
+            trend_options,
+            key="dashboard_liability_trend_selector",
+        )
+
+        selected_ids = set(
+            liabilities.loc[
+                liabilities["Liability Name"].astype(str) == selected_liability,
+                "Record ID",
+            ].astype(str)
+        ) if selected_liability != "All Liabilities" else set(liabilities["Record ID"].astype(str))
+
+        trend_events = []
+        for _, liability_row in liabilities.iterrows():
+            liability_id = str(liability_row.get("Record ID", ""))
+            if liability_id not in selected_ids:
+                continue
+            trend_events.append({
+                "Date": liability_row.get("Liability Date", ""),
+                "Change": to_float(liability_row.get("Original Amount", 0)),
+                "Movement": "Liability Added",
+            })
+
+        if not adjustments.empty:
+            for _, adjustment_row in adjustments.iterrows():
+                if str(adjustment_row.get("Liability ID", "")) not in selected_ids:
+                    continue
+                trend_events.append({
+                    "Date": adjustment_row.get("Date", ""),
+                    "Change": to_float(adjustment_row.get("Amount", 0)),
+                    "Movement": str(adjustment_row.get("Adjustment Type", "Adjustment")),
+                })
+
+        if not payments.empty:
+            for _, payment_row in payments.iterrows():
+                if str(payment_row.get("Liability ID", "")) not in selected_ids:
+                    continue
+                trend_events.append({
+                    "Date": payment_row.get("Payment Date", ""),
+                    "Change": -to_float(payment_row.get("Payment Amount", 0)),
+                    "Movement": "Payment",
+                })
+
+        trend_df = pd.DataFrame(trend_events)
+        if trend_df.empty:
+            st.info("No liability activity is available for the selected liability.")
+        else:
+            trend_df["Date"] = pd.to_datetime(trend_df["Date"], errors="coerce")
+            trend_df = trend_df.dropna(subset=["Date"])
+            if trend_df.empty:
+                st.info("Liability activity dates are missing or invalid.")
+            else:
+                daily_trend = trend_df.groupby("Date", as_index=False)["Change"].sum().sort_values("Date")
+                daily_trend["Outstanding"] = daily_trend["Change"].cumsum().clip(lower=0)
+                daily_trend["Direction"] = daily_trend["Change"].apply(
+                    lambda value: "Up" if value > 0 else ("Down" if value < 0 else "No Change")
+                )
+
+                current_balance = float(daily_trend["Outstanding"].iloc[-1])
+                previous_balance = float(daily_trend["Outstanding"].iloc[-2]) if len(daily_trend) > 1 else 0.0
+                latest_change = current_balance - previous_balance
+                direction_text = "Increasing" if latest_change > 0 else ("Decreasing" if latest_change < 0 else "No change")
+
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Selected", selected_liability)
+                m2.metric("Current Outstanding", secure(current_balance))
+                m3.metric("Latest Direction", direction_text, secure(abs(latest_change)) if latest_change else None)
+
+                fig = px.line(
+                    daily_trend,
+                    x="Date",
+                    y="Outstanding",
+                    markers=True,
+                    labels={"Date": "Date", "Outstanding": "Outstanding Liability (LKR)"},
+                )
+                fig.update_traces(hovertemplate="%{x|%Y-%m-%d}<br>Outstanding: LKR %{y:,.2f}<extra></extra>")
+                fig.update_layout(
+                    hovermode="x unified",
+                    margin=dict(l=10, r=10, t=20, b=10),
+                    yaxis_tickprefix="LKR ",
+                    yaxis_tickformat=",.0f",
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption("An upward line means liabilities increased. A downward line means payments reduced the outstanding balance.")
 
     left, right = st.columns(2)
     with left:
