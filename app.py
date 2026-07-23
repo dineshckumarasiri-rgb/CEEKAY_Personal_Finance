@@ -673,7 +673,23 @@ def expenses_page():
 
 def liabilities_page():
     st.subheader("Liability Management")
-    tab1, tab2, tab3, tab4 = st.tabs(["Add Liability", "Add Amount / Interest", "Edit / Delete", "Liability Summary"])
+
+    for message_key in [
+        "liability_save_success",
+        "adjustment_save_success",
+        "adjustment_update_success",
+        "adjustment_delete_success",
+    ]:
+        if st.session_state.get(message_key):
+            st.success(st.session_state.pop(message_key))
+
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "Add Liability",
+        "Add Amount / Interest",
+        "Edit / Delete Added Amount",
+        "Edit / Delete Liability",
+        "Liability Summary",
+    ])
 
     with tab1:
         with st.form("add_liability", clear_on_submit=True):
@@ -694,7 +710,8 @@ def liabilities_page():
                 st.error("Liability name and original amount are required.")
             else:
                 append_record("Liabilities", {"Record ID": make_id("LIA"), "Liability Date": d.strftime(DATE_FMT), "Liability Name": name.strip(), "Category": cat, "Original Amount": original, "Interest Rate %": rate, "Monthly Instalment": instalment, "Due Date": due.strftime(DATE_FMT), "Lender": lender, "Description": desc, "Status": status, "Created At": now_text(), "Updated At": now_text()})
-                st.success(f"Liability '{name.strip()}' added successfully.")
+                st.session_state["liability_save_success"] = f"Liability '{name.strip()}' added successfully."
+                st.rerun()
 
     with tab2:
         liabilities = load_sheet("Liabilities")
@@ -721,13 +738,95 @@ def liabilities_page():
                         "Adjustment Type": adjustment_type, "Amount": amount,
                         "Description": description, "Created At": now_text(), "Updated At": now_text()
                     })
-                    st.success(f"{adjustment_type} of {money(amount)} added successfully.")
-            adjustments = load_sheet("LiabilityAdjustments")
+                    st.session_state["adjustment_save_success"] = f"{adjustment_type} of {money(amount)} added successfully."
+                    st.rerun()
+
+            adjustments = load_sheet_fresh("LiabilityAdjustments")
             if not adjustments.empty:
                 st.markdown("#### Added Amounts and Interest History")
-                data_editor_table(adjustments, ["Created At", "Updated At"])
+                display_adjustments = adjustments.copy()
+                display_adjustments["Amount"] = display_adjustments["Amount"].apply(to_float)
+                display_adjustments = display_adjustments.sort_values(["Date", "Created At"], ascending=False, na_position="last")
+                data_editor_table(display_adjustments, ["Created At", "Updated At"])
 
     with tab3:
+        adjustments = load_sheet_fresh("LiabilityAdjustments")
+        if adjustments.empty:
+            st.info("No additional liability, interest, or fee entries have been recorded.")
+        else:
+            adjustment_labels = {
+                str(r["Record ID"]): f"{r['Date']} — {r['Liability Name']} — {r['Adjustment Type']} — {money(to_float(r['Amount']))}"
+                for _, r in adjustments.iterrows()
+            }
+            valid_adjustment_ids = [x for x in adjustments["Record ID"].astype(str).tolist() if x.strip()]
+            if not valid_adjustment_ids:
+                st.warning("Adjustment rows exist in Google Sheets, but their Record ID values are blank. Please check the LiabilityAdjustments worksheet.")
+            else:
+                adjustment_id = st.selectbox(
+                    "Select Added Amount / Interest Entry",
+                    valid_adjustment_ids,
+                    format_func=lambda x: adjustment_labels.get(x, x),
+                    key="adjustment_manage",
+                )
+                arow = adjustments[adjustments["Record ID"].astype(str) == adjustment_id].iloc[0]
+                parsed_adjustment_date = pd.to_datetime(str(arow["Date"]), errors="coerce")
+                default_adjustment_date = parsed_adjustment_date.date() if not pd.isna(parsed_adjustment_date) else date.today()
+                adjustment_types = ["Additional Liability", "Interest Charge", "Fee / Charge"]
+                current_type = str(arow["Adjustment Type"])
+
+                with st.form("edit_liability_adjustment"):
+                    st.text_input("Liability", value=str(arow["Liability Name"]), disabled=True)
+                    c1, c2 = st.columns(2)
+                    edit_adjustment_date = c1.date_input("Date", value=default_adjustment_date)
+                    edit_adjustment_type = c2.selectbox(
+                        "Entry Type",
+                        adjustment_types,
+                        index=adjustment_types.index(current_type) if current_type in adjustment_types else 0,
+                    )
+                    edit_adjustment_amount = c1.number_input(
+                        "Amount",
+                        min_value=0.01,
+                        value=max(to_float(arow["Amount"]), 0.01),
+                        step=1000.0,
+                    )
+                    edit_adjustment_description = c2.text_input("Description", value=str(arow["Description"]))
+                    adjustment_update_submit = st.form_submit_button("Update Added Amount", use_container_width=True)
+
+                if adjustment_update_submit:
+                    update_record("LiabilityAdjustments", adjustment_id, {
+                        "Date": edit_adjustment_date.strftime(DATE_FMT),
+                        "Adjustment Type": edit_adjustment_type,
+                        "Amount": edit_adjustment_amount,
+                        "Description": edit_adjustment_description,
+                    })
+                    st.session_state["adjustment_update_success"] = "The added liability entry was updated and all liability balances were recalculated."
+                    st.rerun()
+
+                st.markdown("---")
+                st.warning("Deleting this entry will remove it from the liability calculation.")
+                confirm_adjustment_delete = st.checkbox(
+                    "Confirm added amount deletion",
+                    key="delete_adjustment_confirm",
+                )
+                if st.button(
+                    "Delete Selected Added Amount",
+                    type="primary",
+                    disabled=not confirm_adjustment_delete,
+                    use_container_width=True,
+                ):
+                    if delete_record("LiabilityAdjustments", adjustment_id):
+                        st.session_state["adjustment_delete_success"] = "The added liability entry was deleted and all liability balances were recalculated."
+                        st.rerun()
+                    else:
+                        st.error("The selected entry could not be found in Google Sheets.")
+
+                st.markdown("#### Added Amounts and Interest History")
+                adjustment_history = adjustments.copy()
+                adjustment_history["Amount"] = adjustment_history["Amount"].apply(to_float)
+                adjustment_history = adjustment_history.sort_values(["Date", "Created At"], ascending=False, na_position="last")
+                data_editor_table(adjustment_history, ["Created At", "Updated At"])
+
+    with tab4:
         df = load_sheet("Liabilities")
         rid = record_selector(df, "Liability Name", "liability_edit")
         if rid:
@@ -742,8 +841,8 @@ def liabilities_page():
                     st.rerun()
             confirm = st.checkbox("Confirm liability deletion", key="delete_liability_confirm")
             if st.button("Delete Liability", type="primary", disabled=not confirm):
-                related_payments = load_sheet("LiabilityPayments")
-                related_adjustments = load_sheet("LiabilityAdjustments")
+                related_payments = load_sheet_fresh("LiabilityPayments")
+                related_adjustments = load_sheet_fresh("LiabilityAdjustments")
                 has_payments = not related_payments.empty and (related_payments["Liability ID"].astype(str) == rid).any()
                 has_adjustments = not related_adjustments.empty and (related_adjustments["Liability ID"].astype(str) == rid).any()
                 if has_payments or has_adjustments:
@@ -752,8 +851,12 @@ def liabilities_page():
                     delete_record("Liabilities", rid)
                     st.rerun()
 
-    with tab4:
-        summary = liability_summary(load_sheet("Liabilities"), load_sheet("LiabilityPayments"), load_sheet("LiabilityAdjustments"))
+    with tab5:
+        summary = liability_summary(
+            load_sheet("Liabilities"),
+            load_sheet_fresh("LiabilityPayments"),
+            load_sheet_fresh("LiabilityAdjustments"),
+        )
         if not summary.empty:
             data_editor_table(summary[["Record ID", "Liability Name", "Original Amount", "Additional Amounts", "Interest / Fees Added", "Current Total Liability", "Total Paid", "Outstanding", "Progress %", "Calculated Status"]])
         else:
