@@ -926,28 +926,64 @@ def payments_page():
 
     with tab1:
         active = summary[summary["Outstanding"] > 0.01]
-        with st.form("add_payment", clear_on_submit=True):
-            options = active["Record ID"].astype(str).tolist() if not active.empty else summary["Record ID"].astype(str).tolist()
-            label_map = {str(r["Record ID"]): f"{r['Liability Name']} — Outstanding {money(r['Outstanding'])}" for _, r in summary.iterrows()}
-            lid = st.selectbox("Liability", options, format_func=lambda x: label_map.get(x, x))
-            row = summary[summary["Record ID"].astype(str) == lid].iloc[0]
+        options = active["Record ID"].astype(str).tolist() if not active.empty else summary["Record ID"].astype(str).tolist()
+        label_map = {str(r["Record ID"]): f"{r['Liability Name']} — Outstanding {money(r['Outstanding'])}" for _, r in summary.iterrows()}
+
+        # Keep the liability selector outside the form so Streamlit reruns as soon
+        # as the user changes it. This prevents payment values from a previously
+        # selected liability being submitted against another liability.
+        lid = st.selectbox(
+            "Liability",
+            options,
+            format_func=lambda x: label_map.get(x, x),
+            key="add_payment_liability",
+        )
+        row = summary[summary["Record ID"].astype(str) == lid].iloc[0]
+        outstanding_limit = max(float(row["Outstanding"]), 0.0)
+
+        with st.form(f"add_payment_{lid}", clear_on_submit=True):
             c1, c2 = st.columns(2)
-            d = c1.date_input("Payment Date", value=date.today())
-            payment_amount = c2.number_input("Total Payment Amount", min_value=0.0, max_value=float(row["Outstanding"]), step=1000.0)
-            principal = c1.number_input("Principal Portion", min_value=0.0, max_value=float(row["Outstanding"]), step=1000.0, help="Optional breakdown only. The total payment reduces the outstanding balance.")
-            interest = c2.number_input("Interest Portion", min_value=0.0, step=100.0, help="Optional breakdown of the payment.")
-            method = c1.selectbox("Payment Method", PAYMENT_METHODS)
-            ref = c2.text_input("Reference No")
-            notes = st.text_area("Notes")
+            d = c1.date_input("Payment Date", value=date.today(), key=f"payment_date_{lid}")
+            payment_amount = c2.number_input(
+                "Total Payment Amount",
+                min_value=0.0,
+                max_value=outstanding_limit,
+                value=0.0,
+                step=1000.0,
+                key=f"payment_amount_{lid}",
+            )
+            principal = c1.number_input(
+                "Principal Portion",
+                min_value=0.0,
+                max_value=outstanding_limit,
+                value=0.0,
+                step=1000.0,
+                help="Optional breakdown only. The total payment reduces the outstanding balance.",
+                key=f"payment_principal_{lid}",
+            )
+            interest = c2.number_input(
+                "Interest Portion",
+                min_value=0.0,
+                value=0.0,
+                step=100.0,
+                help="Optional breakdown of the payment.",
+                key=f"payment_interest_{lid}",
+            )
+            method = c1.selectbox("Payment Method", PAYMENT_METHODS, key=f"payment_method_{lid}")
+            ref = c2.text_input("Reference No", key=f"payment_reference_{lid}")
+            notes = st.text_area("Notes", key=f"payment_notes_{lid}")
             submitted = st.form_submit_button("Save Payment", use_container_width=True)
+
         if submitted:
             if payment_amount <= 0:
                 st.error("Enter a valid payment amount.")
+            elif payment_amount > outstanding_limit + 0.01:
+                st.error(f"Payment amount cannot exceed the outstanding balance of {money(outstanding_limit)}.")
             elif principal + interest > payment_amount + 0.01:
                 st.error("Principal plus interest cannot exceed the total payment amount.")
             else:
                 append_record("LiabilityPayments", {"Record ID": make_id("PAY"), "Payment Date": d.strftime(DATE_FMT), "Liability ID": lid, "Liability Name": row["Liability Name"], "Payment Amount": payment_amount, "Principal Amount": principal, "Interest Amount": interest, "Payment Method": method, "Reference No": ref, "Notes": notes, "Created At": now_text(), "Updated At": now_text()})
-                if payment_amount >= row["Outstanding"] - 0.01:
+                if payment_amount >= outstanding_limit - 0.01:
                     update_record("Liabilities", lid, {"Status": "Paid"})
                 st.session_state["payment_save_success"] = f"Payment of {money(payment_amount)} saved successfully."
                 st.rerun()
