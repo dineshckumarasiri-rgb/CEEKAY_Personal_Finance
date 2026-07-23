@@ -72,16 +72,28 @@ st.set_page_config(page_title=APP_TITLE, page_icon="💰", layout="wide")
 st.markdown(
     """
     <style>
-    .stApp {background: linear-gradient(135deg, #f7f9fc 0%, #eef2f7 100%); color: #111827;}
-    [data-testid="stSidebar"] {background: #111827;}
-    [data-testid="stSidebar"] * {color: #f9fafb !important;}
-    [data-testid="stMetric"] {background: white; padding: 18px; border-radius: 16px; border: 1px solid #e5e7eb; box-shadow: 0 5px 20px rgba(15,23,42,.05);}
-    div[data-testid="stForm"] {background: white; padding: 18px; border-radius: 16px; border: 1px solid #e5e7eb;}
-    .block-container {padding-top: 1.5rem; padding-bottom: 2.5rem;}
-    .finance-title {font-size: 2rem; font-weight: 700; color: #111827; margin-bottom: .1rem;}
-    .finance-subtitle {color: #6b7280; margin-bottom: 1rem;}
-    .small-note {font-size:.85rem;color:#6b7280;}
-    .section-card {background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 4px 16px rgba(15,23,42,.04)}
+    :root { --navy:#0f172a; --blue:#2563eb; --teal:#0f766e; --ink:#111827; }
+    .stApp {background:linear-gradient(135deg,#f7f9fc 0%,#edf3f9 100%);color:var(--ink);}
+    header[data-testid="stHeader"] {height:3.5rem;background:rgba(255,255,255,.94);}
+    .block-container {padding-top:5.4rem !important;padding-bottom:3rem;max-width:1500px;}
+    [data-testid="stSidebar"] {background:linear-gradient(180deg,#111827 0%,#0b1220 100%);}
+    [data-testid="stSidebar"] * {color:#f8fafc !important;}
+    h1,h2,h3,h4,h5,h6,.finance-title {line-height:1.25 !important;overflow:visible !important;padding-top:.12em !important;}
+    .finance-title {font-size:2.1rem;font-weight:760;color:#0f172a;margin:0 0 .2rem;}
+    .finance-subtitle {color:#64748b;margin:0 0 1.35rem;font-size:1.02rem;}
+    [data-testid="stMetric"] {background:#fff;padding:20px 18px;min-height:142px;border-radius:20px;border:1px solid #e2e8f0;box-shadow:0 10px 28px rgba(15,23,42,.06);overflow:visible !important;min-width:0;}
+    [data-testid="stMetricLabel"] {font-size:.95rem;}
+    [data-testid="stMetricValue"], [data-testid="stMetricValue"] > div {font-size:clamp(1.05rem,1.55vw,1.65rem) !important;line-height:1.28 !important;white-space:nowrap !important;overflow:visible !important;text-overflow:clip !important;word-break:normal !important;max-width:none !important;width:auto !important;}
+    div[data-testid="stForm"] {background:rgba(255,255,255,.98);padding:24px;border-radius:20px;border:1px solid #e2e8f0;box-shadow:0 10px 30px rgba(15,23,42,.05);}
+    .section-card {background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:20px;margin-bottom:16px;box-shadow:0 8px 24px rgba(15,23,42,.05)}
+    .small-note {font-size:.85rem;color:#64748b;}
+    div.stButton > button, div[data-testid="stFormSubmitButton"] button {border-radius:12px;min-height:44px;font-weight:650;}
+    div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, textarea {border-radius:12px !important;}
+    .login-logo {width:86px;height:86px;border-radius:24px;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:2.25rem;background:linear-gradient(135deg,#2563eb,#0f766e);}
+    .login-name {font-size:2rem;font-weight:780;line-height:1.25;color:#0f172a;}
+    .login-sub {color:#64748b;margin:.35rem 0 1.1rem;}
+    .login-note {background:#f1f5f9;border-radius:13px;padding:12px;color:#475569;font-size:.88rem;}
+    @media(max-width:900px){.block-container{padding-top:4.8rem !important;}[data-testid="stMetric"]{min-height:120px;padding:16px;}[data-testid="stMetricValue"]{font-size:1.35rem !important;}}
     </style>
     """,
     unsafe_allow_html=True,
@@ -128,25 +140,39 @@ def get_workbook():
     workbook_name = st.secrets.get("workbook_name", WORKBOOK_NAME)
     try:
         book = client.open(workbook_name)
-    except gspread.SpreadsheetNotFound:
-        book = client.create(workbook_name)
+    except gspread.SpreadsheetNotFound as exc:
+        raise RuntimeError(
+            f"Google Sheet '{workbook_name}' was not found. Create it manually and share it with the service-account email."
+        ) from exc
     initialize_workbook(book)
     return book
 
 
+def ensure_worksheet(book, sheet_name: str):
+    """Return a worksheet, creating and initializing it when it is missing."""
+    headers = SHEETS[sheet_name]
+    try:
+        ws = book.worksheet(sheet_name)
+    except gspread.WorksheetNotFound:
+        ws = book.add_worksheet(
+            title=sheet_name,
+            rows=2000,
+            cols=max(20, len(headers) + 2),
+        )
+        ws.append_row(headers)
+        return ws
+
+    first_row = ws.row_values(1)
+    if not first_row:
+        ws.append_row(headers)
+    elif first_row != headers:
+        ws.update("A1", [headers])
+    return ws
+
+
 def initialize_workbook(book):
-    existing = {ws.title for ws in book.worksheets()}
-    for name, headers in SHEETS.items():
-        if name not in existing:
-            ws = book.add_worksheet(title=name, rows=2000, cols=max(20, len(headers) + 2))
-            ws.append_row(headers)
-        else:
-            ws = book.worksheet(name)
-            first_row = ws.row_values(1)
-            if not first_row:
-                ws.append_row(headers)
-            elif first_row != headers:
-                ws.update("A1", [headers])
+    for name in SHEETS:
+        ensure_worksheet(book, name)
     try:
         default_sheet = book.worksheet("Sheet1")
         if len(book.worksheets()) > 1 and not default_sheet.get_all_values():
@@ -172,13 +198,7 @@ def initialize_workbook(book):
 
 @st.cache_data(ttl=60, show_spinner=False)
 def load_sheet(sheet_name: str) -> pd.DataFrame:
-    book = get_workbook()
-    try:
-        ws = book.worksheet(sheet_name)
-    except gspread.WorksheetNotFound:
-        headers = SHEETS[sheet_name]
-        ws = book.add_worksheet(title=sheet_name, rows=2000, cols=max(20, len(headers) + 2))
-        ws.append_row(headers)
+    ws = ensure_worksheet(get_workbook(), sheet_name)
     records = ws.get_all_records()
     return pd.DataFrame(records, columns=SHEETS[sheet_name]) if records else pd.DataFrame(columns=SHEETS[sheet_name])
 
@@ -190,12 +210,12 @@ def clear_data_cache():
 def append_record(sheet_name: str, record: Dict):
     headers = SHEETS[sheet_name]
     row = [record.get(header, "") for header in headers]
-    get_workbook().worksheet(sheet_name).append_row(row, value_input_option="USER_ENTERED")
+    ensure_worksheet(get_workbook(), sheet_name).append_row(row, value_input_option="USER_ENTERED")
     clear_data_cache()
 
 
 def update_record(sheet_name: str, record_id: str, updates: Dict) -> bool:
-    ws = get_workbook().worksheet(sheet_name)
+    ws = ensure_worksheet(get_workbook(), sheet_name)
     values = ws.get_all_values()
     if not values:
         return False
@@ -216,7 +236,7 @@ def update_record(sheet_name: str, record_id: str, updates: Dict) -> bool:
 
 
 def delete_record(sheet_name: str, record_id: str) -> bool:
-    ws = get_workbook().worksheet(sheet_name)
+    ws = ensure_worksheet(get_workbook(), sheet_name)
     values = ws.get_all_values()
     if not values:
         return False
@@ -261,18 +281,33 @@ def data_editor_table(df: pd.DataFrame, hide_cols: Optional[List[str]] = None):
 def login():
     if st.session_state.get("authenticated"):
         return True
-    st.markdown(f'<div class="finance-title">{APP_TITLE}</div>', unsafe_allow_html=True)
-    st.markdown('<div class="finance-subtitle">Secure personal finance management</div>', unsafe_allow_html=True)
-    with st.form("login_form"):
-        password = st.text_input("Admin Password", type="password")
-        submitted = st.form_submit_button("Login", use_container_width=True)
-    if submitted:
-        expected = str(st.secrets.get("admin_password", "admin123"))
-        if password == expected:
-            st.session_state["authenticated"] = True
-            st.rerun()
-        else:
-            st.error("Incorrect password.")
+
+    left, centre, right = st.columns([1, 1.65, 1])
+    with centre:
+        with st.form("login_form"):
+            st.markdown(
+                '<div style="text-align:center;padding:.25rem 0 .7rem;">'
+                '<div class="login-logo">Rs</div>'
+                '<div class="login-name">CEEKAY Finance</div>'
+                '<div class="login-sub">Personal Finance Manager</div>'
+                '<div class="login-note">🔒 Secure private access · Your financial data stays in Google Sheets</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            username = st.text_input("Username", placeholder="Enter your username")
+            password = st.text_input("Password", type="password", placeholder="Enter your password")
+            submitted = st.form_submit_button("Sign in", use_container_width=True)
+
+        if submitted:
+            admin_cfg = st.secrets.get("admin", {})
+            expected_user = str(admin_cfg.get("username", st.secrets.get("admin_username", "admin")))
+            expected_pass = str(admin_cfg.get("password", st.secrets.get("admin_password", "admin123")))
+            if username == expected_user and password == expected_pass:
+                st.session_state["authenticated"] = True
+                st.session_state["username"] = username
+                st.rerun()
+            else:
+                st.error("Incorrect username or password.")
     return False
 
 
@@ -703,6 +738,7 @@ def payments_page():
         st.warning("Add a liability before recording payments.")
         return
 
+    st.info("Use **Add Payment** to record a payment. Use **Edit / Delete Payment** to correct or remove a wrongly entered payment.")
     tab1, tab2 = st.tabs(["Add Payment", "Edit / Delete Payment"])
     summary = liability_summary(liabilities, load_sheet("LiabilityPayments"), load_sheet("LiabilityAdjustments"))
 
@@ -850,10 +886,10 @@ def goals_page():
 
 def reports_page():
     st.subheader("Reports & Data Export")
-    report = st.selectbox("Select Report", ["Assets", "Income", "Expenses", "Liabilities", "Liability Payments", "Liability Adjustments", "Salary Allocation", "Budgets", "Savings Goals", "Monthly Summary"])
+    report = st.selectbox("Select Report", ["Assets", "Income", "Expenses", "Liabilities", "Liability Payments", "Liability Additions", "Salary Allocation", "Budgets", "Savings Goals", "Monthly Summary"])
     mapping = {
         "Assets": "Assets", "Income": "Income", "Expenses": "Expenses", "Liabilities": "Liabilities",
-        "Liability Payments": "LiabilityPayments", "Liability Adjustments": "LiabilityAdjustments", "Salary Allocation": "SalaryAllocation",
+        "Liability Payments": "LiabilityPayments", "Liability Additions": "LiabilityAdjustments", "Salary Allocation": "SalaryAllocation",
         "Budgets": "Budgets", "Savings Goals": "SavingsGoals"
     }
     if report in mapping:
