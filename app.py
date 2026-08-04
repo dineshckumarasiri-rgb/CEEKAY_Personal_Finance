@@ -35,8 +35,8 @@ SHEETS: Dict[str, List[str]] = {
     ],
     "Liabilities": [
         "Record ID", "Liability Date", "Liability Name", "Category", "Original Amount",
-        "Interest Rate %", "Monthly Instalment", "Due Date", "Lender", "Credit Limit",
-        "Description", "Status", "Created At", "Updated At"
+        "Interest Rate %", "Monthly Instalment", "Due Date", "Lender", "Description",
+        "Status", "Created At", "Updated At"
     ],
     "LiabilityPayments": [
         "Record ID", "Payment Date", "Liability ID", "Liability Name", "Payment Amount",
@@ -53,10 +53,6 @@ SHEETS: Dict[str, List[str]] = {
     "SavingsGoals": [
         "Record ID", "Goal Name", "Target Amount", "Current Saved", "Target Date", "Status",
         "Notes", "Created At", "Updated At"
-    ],
-    "NetWorthSnapshots": [
-        "Record ID", "Snapshot Date", "Month", "Total Assets", "Outstanding Liabilities",
-        "Net Worth", "Created At", "Updated At"
     ],
     "Categories": ["Type", "Category", "Active"],
     "Settings": ["Key", "Value"],
@@ -488,54 +484,6 @@ def liability_summary(liabilities: pd.DataFrame, payments: pd.DataFrame, adjustm
     })
 
 
-def calculate_financial_health(total_assets: float, outstanding: float, month_income: float, month_expenses: float, month_payments: float) -> tuple[int, str]:
-    """Return a simple 0-100 financial health score and description."""
-    savings = month_income - month_expenses - month_payments
-    savings_rate = (savings / month_income * 100) if month_income else 0.0
-    debt_ratio = (outstanding / total_assets * 100) if total_assets else (100.0 if outstanding else 0.0)
-
-    savings_score = max(0.0, min(40.0, savings_rate * 1.6))
-    debt_score = max(0.0, min(40.0, 40.0 - debt_ratio * 0.5))
-    cash_score = 20.0 if savings >= 0 else max(0.0, 20.0 + (savings / max(month_income, 1)) * 20.0)
-    score = int(round(max(0.0, min(100.0, savings_score + debt_score + cash_score))))
-
-    if score >= 80:
-        label = "Excellent"
-    elif score >= 65:
-        label = "Good"
-    elif score >= 45:
-        label = "Fair"
-    else:
-        label = "Needs Attention"
-    return score, label
-
-
-def save_or_update_net_worth_snapshot(total_assets: float, outstanding: float, net_worth: float) -> None:
-    """Save one snapshot per month, updating the current month if it already exists."""
-    snapshots = load_sheet_fresh("NetWorthSnapshots")
-    month = date.today().strftime("%Y-%m")
-    snapshot_date = date.today().strftime(DATE_FMT)
-    if not snapshots.empty and (snapshots["Month"].astype(str) == month).any():
-        row = snapshots[snapshots["Month"].astype(str) == month].iloc[-1]
-        update_record("NetWorthSnapshots", str(row["Record ID"]), {
-            "Snapshot Date": snapshot_date,
-            "Total Assets": total_assets,
-            "Outstanding Liabilities": outstanding,
-            "Net Worth": net_worth,
-        })
-    else:
-        append_record("NetWorthSnapshots", {
-            "Record ID": make_id("NWS"),
-            "Snapshot Date": snapshot_date,
-            "Month": month,
-            "Total Assets": total_assets,
-            "Outstanding Liabilities": outstanding,
-            "Net Worth": net_worth,
-            "Created At": now_text(),
-            "Updated At": now_text(),
-        })
-
-
 def dashboard():
     assets = load_sheet("Assets")
     income = load_sheet("Income")
@@ -544,7 +492,6 @@ def dashboard():
     payments = load_sheet("LiabilityPayments")
     adjustments = load_sheet("LiabilityAdjustments")
     goals = load_sheet("SavingsGoals")
-    budgets = load_sheet("Budgets")
 
     for col in ["Current Value", "Monthly Income"]:
         if col in assets:
@@ -553,20 +500,20 @@ def dashboard():
         income["Amount"] = income["Amount"].apply(to_float)
     if "Amount" in expenses:
         expenses["Amount"] = expenses["Amount"].apply(to_float)
-    if "Payment Amount" in payments:
-        payments["Payment Amount"] = payments["Payment Amount"].apply(to_float)
 
     liab = liability_summary(liabilities, payments, adjustments)
-    total_assets = assets["Current Value"].sum() if not assets.empty else 0.0
-    outstanding = liab["Outstanding"].sum() if not liab.empty else 0.0
+    total_assets = assets["Current Value"].sum() if not assets.empty else 0
+    outstanding = liab["Outstanding"].sum() if not liab.empty else 0
     net_worth = total_assets - outstanding
 
     today_month = date.today().strftime("%Y-%m")
-    month_income = income[income["Date"].astype(str).str.startswith(today_month)]["Amount"].sum() if not income.empty else 0.0
-    month_expenses = expenses[expenses["Date"].astype(str).str.startswith(today_month)]["Amount"].sum() if not expenses.empty else 0.0
-    month_payments = payments[payments["Payment Date"].astype(str).str.startswith(today_month)]["Payment Amount"].sum() if not payments.empty else 0.0
-    available = month_income - month_expenses - month_payments
-    health_score, health_label = calculate_financial_health(total_assets, outstanding, month_income, month_expenses, month_payments)
+    month_income = 0.0
+    month_expenses = 0.0
+    if not income.empty:
+        month_income = income[income["Date"].astype(str).str.startswith(today_month)]["Amount"].sum()
+    if not expenses.empty:
+        month_expenses = expenses[expenses["Date"].astype(str).str.startswith(today_month)]["Amount"].sum()
+    available = month_income - month_expenses
 
     if "show_figures" not in st.session_state:
         st.session_state["show_figures"] = False
@@ -580,124 +527,28 @@ def dashboard():
         return money(value) if st.session_state["show_figures"] else "********"
 
     cols = st.columns(4)
-    cols[0].metric("Net Worth", secure(net_worth))
+    cols[0].metric("Total Assets", secure(total_assets))
     cols[1].metric("Outstanding Liabilities", secure(outstanding))
-    cols[2].metric("Monthly Cash Remaining", secure(available))
-    cols[3].metric("Financial Health", f"{health_score}/100", health_label)
+    cols[2].metric("Net Worth", secure(net_worth))
+    cols[3].metric("This Month Balance", secure(available))
 
     cols = st.columns(4)
-    cols[0].metric("Total Assets", secure(total_assets))
-    cols[1].metric("This Month Income", secure(month_income))
-    cols[2].metric("This Month Expenses", secure(month_expenses))
-    cols[3].metric("Liability Payments", secure(month_payments))
+    cols[0].metric("This Month Income", secure(month_income))
+    cols[1].metric("This Month Expenses", secure(month_expenses))
+    cols[2].metric("Savings Rate", f"{((available / month_income) * 100 if month_income else 0):.1f}%")
+    cols[3].metric("Debt-to-Asset Ratio", f"{((outstanding / total_assets) * 100 if total_assets else 0):.1f}%")
 
-    # Net worth history
-    st.subheader("Net Worth History")
-    snap_col, action_col = st.columns([4, 1])
-    with action_col:
-        if st.button("Save Current Snapshot", use_container_width=True):
-            save_or_update_net_worth_snapshot(total_assets, outstanding, net_worth)
-            st.success("Current month net-worth snapshot saved.")
-            st.rerun()
-    snapshots = load_sheet("NetWorthSnapshots")
-    if not snapshots.empty:
-        s = snapshots.copy()
-        for col in ["Total Assets", "Outstanding Liabilities", "Net Worth"]:
-            s[col] = s[col].apply(to_float)
-        s = s.sort_values("Month")
-        fig = px.line(s, x="Month", y=["Total Assets", "Outstanding Liabilities", "Net Worth"], markers=True)
-        fig.update_traces(hovertemplate="%{x}<br>LKR %{y:,.2f}<extra>%{fullData.name}</extra>")
-        format_chart_numbers(fig)
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Save the current snapshot each month to build your net-worth history.")
-
-    # Monthly cash flow and wealth breakdown
-    left, right = st.columns(2)
-    with left:
-        st.subheader("Monthly Cash Flow")
-        months = set()
-        if not income.empty:
-            months.update(income["Date"].astype(str).str[:7].tolist())
-        if not expenses.empty:
-            months.update(expenses["Date"].astype(str).str[:7].tolist())
-        if not payments.empty:
-            months.update(payments["Payment Date"].astype(str).str[:7].tolist())
-        cash_rows = []
-        for month in sorted(m for m in months if len(m) == 7):
-            inc = income[income["Date"].astype(str).str.startswith(month)]["Amount"].sum() if not income.empty else 0.0
-            exp = expenses[expenses["Date"].astype(str).str.startswith(month)]["Amount"].sum() if not expenses.empty else 0.0
-            pay = payments[payments["Payment Date"].astype(str).str.startswith(month)]["Payment Amount"].sum() if not payments.empty else 0.0
-            cash_rows.append({"Month": month, "Income": inc, "Expenses": exp, "Liability Payments": pay, "Net Cash": inc-exp-pay})
-        if cash_rows:
-            cash_df = pd.DataFrame(cash_rows)
-            fig = px.bar(cash_df, x="Month", y=["Income", "Expenses", "Liability Payments"], barmode="group")
-            fig.update_traces(hovertemplate="%{x}<br>LKR %{y:,.2f}<extra>%{fullData.name}</extra>")
-            format_chart_numbers(fig)
-            st.plotly_chart(fig, use_container_width=True)
-            st.dataframe(format_dataframe_numbers(cash_df.tail(6)), use_container_width=True, hide_index=True)
-        else:
-            st.info("Add income, expenses, and liability payments to display cash flow.")
-
-    with right:
-        st.subheader("Wealth Breakdown")
-        if not assets.empty:
-            wealth = assets.groupby("Category")["Current Value"].sum().reset_index()
-            wealth = wealth[wealth["Current Value"] > 0]
-            if not wealth.empty:
-                fig = px.pie(wealth, names="Category", values="Current Value", hole=.55)
-                fig.update_traces(hovertemplate="%{label}<br>LKR %{value:,.2f}<br>%{percent}<extra></extra>")
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Add current asset values to display wealth allocation.")
-        else:
-            st.info("No assets recorded.")
-
-    # Credit card overview
-    st.subheader("Credit Card Overview")
-    if not liab.empty and "Category" in liab.columns:
-        cards = liab[liab["Category"].astype(str) == "Credit Card"].copy()
-    else:
-        cards = pd.DataFrame()
-    if not cards.empty:
-        liability_limits = liabilities[["Record ID", "Credit Limit"]].copy() if "Credit Limit" in liabilities.columns else pd.DataFrame(columns=["Record ID", "Credit Limit"])
-        cards = cards.merge(liability_limits, on="Record ID", how="left")
-        cards["Credit Limit"] = cards["Credit Limit"].apply(to_float)
-        cards["Available Limit"] = (cards["Credit Limit"] - cards["Outstanding"]).clip(lower=0)
-        cards["Utilization %"] = cards.apply(lambda r: (r["Outstanding"] / r["Credit Limit"] * 100) if r["Credit Limit"] else 0.0, axis=1)
-        data_editor_table(cards[["Liability Name", "Credit Limit", "Outstanding", "Available Limit", "Utilization %"]])
-    else:
-        st.info("Add a Credit Card liability to display card utilization.")
-
-    # Upcoming payments
-    st.subheader("Upcoming Liability Payments")
-    upcoming = liabilities.copy()
-    if not upcoming.empty:
-        upcoming["Due Parsed"] = pd.to_datetime(upcoming["Due Date"], errors="coerce")
-        upcoming["Monthly Instalment"] = upcoming["Monthly Instalment"].apply(to_float)
-        upcoming = upcoming.merge(liab[["Record ID", "Outstanding"]], on="Record ID", how="left")
-        today_ts = pd.Timestamp(date.today())
-        upcoming["Days Remaining"] = (upcoming["Due Parsed"] - today_ts).dt.days
-        upcoming = upcoming[(upcoming["Outstanding"].fillna(0) > 0.01) & upcoming["Due Parsed"].notna()].copy()
-        upcoming["Payment Status"] = upcoming["Days Remaining"].apply(lambda d: "Overdue" if d < 0 else ("Due Soon" if d <= 7 else ("Upcoming" if d <= 30 else "Later")))
-        upcoming = upcoming.sort_values("Due Parsed")
-        if not upcoming.empty:
-            data_editor_table(upcoming[["Liability Name", "Category", "Due Date", "Days Remaining", "Monthly Instalment", "Outstanding", "Payment Status"]])
-        else:
-            st.info("No dated outstanding liabilities are available.")
-    else:
-        st.info("No liabilities recorded.")
-
-    # Existing analytics
     left, right = st.columns(2)
     with left:
         st.subheader("Income vs Expenses")
         combined = []
         if not income.empty:
-            temp = income.copy(); temp["Month"] = temp["Date"].astype(str).str[:7]
+            temp = income.copy()
+            temp["Month"] = temp["Date"].astype(str).str[:7]
             combined.append(temp.groupby("Month")["Amount"].sum().reset_index().assign(Type="Income"))
         if not expenses.empty:
-            temp = expenses.copy(); temp["Month"] = temp["Date"].astype(str).str[:7]
+            temp = expenses.copy()
+            temp["Month"] = temp["Date"].astype(str).str[:7]
             combined.append(temp.groupby("Month")["Amount"].sum().reset_index().assign(Type="Expenses"))
         if combined:
             chart_df = pd.concat(combined, ignore_index=True)
@@ -724,42 +575,91 @@ def dashboard():
     else:
         liability_names = liabilities["Liability Name"].fillna("").astype(str).tolist()
         trend_options = ["All Liabilities"] + list(dict.fromkeys(name for name in liability_names if name.strip()))
-        selected_liability = st.selectbox("View liability trend", trend_options, key="dashboard_liability_trend_selector")
-        selected_ids = set(liabilities.loc[liabilities["Liability Name"].astype(str) == selected_liability, "Record ID"].astype(str)) if selected_liability != "All Liabilities" else set(liabilities["Record ID"].astype(str))
+        selected_liability = st.selectbox(
+            "View liability trend",
+            trend_options,
+            key="dashboard_liability_trend_selector",
+        )
+
+        selected_ids = set(
+            liabilities.loc[
+                liabilities["Liability Name"].astype(str) == selected_liability,
+                "Record ID",
+            ].astype(str)
+        ) if selected_liability != "All Liabilities" else set(liabilities["Record ID"].astype(str))
+
         trend_events = []
         for _, liability_row in liabilities.iterrows():
             liability_id = str(liability_row.get("Record ID", ""))
-            if liability_id in selected_ids:
-                trend_events.append({"Date": liability_row.get("Liability Date", ""), "Change": to_float(liability_row.get("Original Amount", 0))})
+            if liability_id not in selected_ids:
+                continue
+            trend_events.append({
+                "Date": liability_row.get("Liability Date", ""),
+                "Change": to_float(liability_row.get("Original Amount", 0)),
+                "Movement": "Liability Added",
+            })
+
         if not adjustments.empty:
             for _, adjustment_row in adjustments.iterrows():
-                if str(adjustment_row.get("Liability ID", "")) in selected_ids:
-                    trend_events.append({"Date": adjustment_row.get("Date", ""), "Change": to_float(adjustment_row.get("Amount", 0))})
+                if str(adjustment_row.get("Liability ID", "")) not in selected_ids:
+                    continue
+                trend_events.append({
+                    "Date": adjustment_row.get("Date", ""),
+                    "Change": to_float(adjustment_row.get("Amount", 0)),
+                    "Movement": str(adjustment_row.get("Adjustment Type", "Adjustment")),
+                })
+
         if not payments.empty:
             for _, payment_row in payments.iterrows():
-                if str(payment_row.get("Liability ID", "")) in selected_ids:
-                    trend_events.append({"Date": payment_row.get("Payment Date", ""), "Change": -to_float(payment_row.get("Payment Amount", 0))})
+                if str(payment_row.get("Liability ID", "")) not in selected_ids:
+                    continue
+                trend_events.append({
+                    "Date": payment_row.get("Payment Date", ""),
+                    "Change": -to_float(payment_row.get("Payment Amount", 0)),
+                    "Movement": "Payment",
+                })
+
         trend_df = pd.DataFrame(trend_events)
-        if not trend_df.empty:
+        if trend_df.empty:
+            st.info("No liability activity is available for the selected liability.")
+        else:
             trend_df["Date"] = pd.to_datetime(trend_df["Date"], errors="coerce")
             trend_df = trend_df.dropna(subset=["Date"])
-            daily_trend = trend_df.groupby("Date", as_index=False)["Change"].sum().sort_values("Date")
-            daily_trend["Outstanding"] = daily_trend["Change"].cumsum().clip(lower=0)
-            current_balance = float(daily_trend["Outstanding"].iloc[-1]) if not daily_trend.empty else 0.0
-            previous_balance = float(daily_trend["Outstanding"].iloc[-2]) if len(daily_trend) > 1 else current_balance
-            latest_change = current_balance - previous_balance
-            direction_text = "Increasing" if latest_change > 0 else ("Decreasing" if latest_change < 0 else "No change")
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Selected", selected_liability)
-            m2.metric("Current Outstanding", secure(current_balance))
-            m3.metric("Latest Direction", direction_text, secure(abs(latest_change)) if latest_change else None)
-            fig = px.line(daily_trend, x="Date", y="Outstanding", markers=True)
-            fig.update_traces(hovertemplate="%{x|%Y-%m-%d}<br>Outstanding: LKR %{y:,.2f}<extra></extra>")
-            format_chart_numbers(fig)
-            st.plotly_chart(fig, use_container_width=True)
-            st.caption("An upward line means liabilities increased. A downward line means payments reduced the outstanding balance.")
-        else:
-            st.info("No liability activity is available for the selected liability.")
+            if trend_df.empty:
+                st.info("Liability activity dates are missing or invalid.")
+            else:
+                daily_trend = trend_df.groupby("Date", as_index=False)["Change"].sum().sort_values("Date")
+                daily_trend["Outstanding"] = daily_trend["Change"].cumsum().clip(lower=0)
+                daily_trend["Direction"] = daily_trend["Change"].apply(
+                    lambda value: "Up" if value > 0 else ("Down" if value < 0 else "No Change")
+                )
+
+                current_balance = float(daily_trend["Outstanding"].iloc[-1])
+                previous_balance = float(daily_trend["Outstanding"].iloc[-2]) if len(daily_trend) > 1 else 0.0
+                latest_change = current_balance - previous_balance
+                direction_text = "Increasing" if latest_change > 0 else ("Decreasing" if latest_change < 0 else "No change")
+
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Selected", selected_liability)
+                m2.metric("Current Outstanding", secure(current_balance))
+                m3.metric("Latest Direction", direction_text, secure(abs(latest_change)) if latest_change else None)
+
+                fig = px.line(
+                    daily_trend,
+                    x="Date",
+                    y="Outstanding",
+                    markers=True,
+                    labels={"Date": "Date", "Outstanding": "Outstanding Liability (LKR)"},
+                )
+                fig.update_traces(hovertemplate="%{x|%Y-%m-%d}<br>Outstanding: LKR %{y:,.2f}<extra></extra>")
+                fig.update_layout(
+                    hovermode="x unified",
+                    margin=dict(l=10, r=10, t=20, b=10),
+                    yaxis_tickprefix="LKR ",
+                    yaxis_tickformat=",.0f",
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption("An upward line means liabilities increased. A downward line means payments reduced the outstanding balance.")
 
     left, right = st.columns(2)
     with left:
@@ -772,11 +672,14 @@ def dashboard():
     with right:
         st.subheader("Savings Goals")
         if not goals.empty:
-            g = goals.copy(); g["Target Amount"] = g["Target Amount"].apply(to_float); g["Current Saved"] = g["Current Saved"].apply(to_float)
+            g = goals.copy()
+            g["Target Amount"] = g["Target Amount"].apply(to_float)
+            g["Current Saved"] = g["Current Saved"].apply(to_float)
             g["Progress %"] = g.apply(lambda r: min(100.0, (r["Current Saved"] / r["Target Amount"] * 100) if r["Target Amount"] else 0), axis=1)
             st.dataframe(format_dataframe_numbers(g[["Goal Name", "Target Amount", "Current Saved", "Progress %", "Target Date", "Status"]]), use_container_width=True, hide_index=True)
         else:
             st.info("No savings goals recorded.")
+
 
 def assets_page():
     st.subheader("Asset Management")
@@ -979,7 +882,6 @@ def liabilities_page():
             instalment = c2.number_input("Monthly Instalment", min_value=0.0, step=1000.0)
             due = c1.date_input("Due Date", value=date.today())
             lender = c2.text_input("Lender")
-            credit_limit = c1.number_input("Credit Limit (Credit Cards only)", min_value=0.0, step=1000.0)
             desc = st.text_area("Description")
             status = st.selectbox("Status", ["Active", "On Hold", "Paid"])
             submitted = st.form_submit_button("Save Liability", use_container_width=True)
@@ -987,7 +889,7 @@ def liabilities_page():
             if not name.strip() or original <= 0:
                 st.error("Liability name and original amount are required.")
             else:
-                append_record("Liabilities", {"Record ID": make_id("LIA"), "Liability Date": d.strftime(DATE_FMT), "Liability Name": name.strip(), "Category": cat, "Original Amount": original, "Interest Rate %": rate, "Monthly Instalment": instalment, "Due Date": due.strftime(DATE_FMT), "Lender": lender, "Credit Limit": credit_limit, "Description": desc, "Status": status, "Created At": now_text(), "Updated At": now_text()})
+                append_record("Liabilities", {"Record ID": make_id("LIA"), "Liability Date": d.strftime(DATE_FMT), "Liability Name": name.strip(), "Category": cat, "Original Amount": original, "Interest Rate %": rate, "Monthly Instalment": instalment, "Due Date": due.strftime(DATE_FMT), "Lender": lender, "Description": desc, "Status": status, "Created At": now_text(), "Updated At": now_text()})
                 st.session_state["liability_save_success"] = f"Liability '{name.strip()}' added successfully."
                 st.rerun()
 
@@ -1127,12 +1029,6 @@ def liabilities_page():
                     value=to_float(row["Monthly Instalment"]),
                     step=1000.0,
                 )
-                credit_limit = c2.number_input(
-                    "Credit Limit (Credit Cards only)",
-                    min_value=0.0,
-                    value=to_float(row.get("Credit Limit", 0)),
-                    step=1000.0,
-                )
                 status_options = ["Active", "On Hold", "Paid"]
                 status = c2.selectbox(
                     "Status",
@@ -1145,7 +1041,6 @@ def liabilities_page():
                         "Liability Date": liability_date.strftime(DATE_FMT),
                         "Original Amount": original_amount,
                         "Monthly Instalment": instalment,
-                        "Credit Limit": credit_limit,
                         "Status": status,
                         "Description": desc,
                     })
@@ -1454,11 +1349,11 @@ def goals_page():
 
 def reports_page():
     st.subheader("Reports & Data Export")
-    report = st.selectbox("Select Report", ["Assets", "Income", "Expenses", "Liabilities", "Liability Payments", "Liability Additions", "Salary Allocation", "Budgets", "Savings Goals", "Net Worth History", "Monthly Summary"])
+    report = st.selectbox("Select Report", ["Assets", "Income", "Expenses", "Liabilities", "Liability Payments", "Liability Additions", "Salary Allocation", "Budgets", "Savings Goals", "Monthly Summary"])
     mapping = {
         "Assets": "Assets", "Income": "Income", "Expenses": "Expenses", "Liabilities": "Liabilities",
         "Liability Payments": "LiabilityPayments", "Liability Additions": "LiabilityAdjustments", "Salary Allocation": "SalaryAllocation",
-        "Budgets": "Budgets", "Savings Goals": "SavingsGoals", "Net Worth History": "NetWorthSnapshots"
+        "Budgets": "Budgets", "Savings Goals": "SavingsGoals"
     }
     if report in mapping:
         df = load_sheet(mapping[report])
