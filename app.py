@@ -1065,7 +1065,37 @@ def liabilities_page():
             load_sheet_fresh("LiabilityAdjustments"),
         )
         if not summary.empty:
-            data_editor_table(summary[["Record ID", "Liability Name", "Original Amount", "Additional Amounts", "Interest / Fees Added", "Current Total Liability", "Total Paid", "Outstanding", "Progress %", "Calculated Status"]])
+            current_summary = summary[summary["Outstanding"].apply(to_float) > 0.01].copy()
+            if current_summary.empty:
+                st.info("No current outstanding liabilities recorded.")
+            else:
+                available_categories = sorted(
+                    [category for category in current_summary["Category"].dropna().astype(str).unique().tolist() if category.strip()]
+                )
+                selected_category = st.selectbox(
+                    "Filter Current Liabilities by Category",
+                    ["All Categories"] + available_categories,
+                    key="liability_summary_category_filter",
+                )
+
+                if selected_category == "All Categories":
+                    filtered_summary = current_summary.copy()
+                else:
+                    filtered_summary = current_summary[
+                        current_summary["Category"].astype(str) == selected_category
+                    ].copy()
+
+                filtered_total = filtered_summary["Outstanding"].apply(to_float).sum()
+                c1, c2 = st.columns(2)
+                c1.metric("Selected Category", selected_category)
+                c2.metric("Filtered Outstanding Total", money(filtered_total))
+
+                data_editor_table(filtered_summary[[
+                    "Record ID", "Liability Name", "Category", "Original Amount",
+                    "Additional Amounts", "Interest / Fees Added",
+                    "Current Total Liability", "Total Paid", "Outstanding",
+                    "Progress %", "Calculated Status"
+                ]])
         else:
             st.info("No liabilities recorded.")
 
