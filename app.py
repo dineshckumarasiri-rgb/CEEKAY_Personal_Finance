@@ -234,9 +234,38 @@ def get_worksheet(sheet_name: str):
 
 @st.cache_data(ttl=60, show_spinner=False)
 def load_sheet(sheet_name: str) -> pd.DataFrame:
+    """Read a worksheet safely without relying on gspread.get_all_records().
+
+    Using get_all_values() avoids GSpreadException errors caused by duplicate,
+    blank, or temporarily inconsistent worksheet headers. The app continues to
+    use the fixed column structure defined in SHEETS, so existing calculations
+    and UI logic remain unchanged.
+    """
     ws = get_worksheet(sheet_name)
-    records = google_api_call(ws.get_all_records)
-    return pd.DataFrame(records, columns=SHEETS[sheet_name]) if records else pd.DataFrame(columns=SHEETS[sheet_name])
+    values = google_api_call(ws.get_all_values)
+    expected_headers = SHEETS[sheet_name]
+
+    if len(values) <= 1:
+        return pd.DataFrame(columns=expected_headers)
+
+    sheet_headers = values[0]
+    records = []
+    for row in values[1:]:
+        if not any(str(cell).strip() for cell in row):
+            continue
+
+        # Read only columns that have a usable header. Duplicate headers are
+        # resolved by keeping the first occurrence, matching the app schema.
+        record = {}
+        for index, header in enumerate(sheet_headers):
+            header = str(header).strip()
+            if not header or header in record:
+                continue
+            record[header] = row[index] if index < len(row) else ""
+
+        records.append({column: record.get(column, "") for column in expected_headers})
+
+    return pd.DataFrame(records, columns=expected_headers) if records else pd.DataFrame(columns=expected_headers)
 
 
 def load_sheet_fresh(sheet_name: str) -> pd.DataFrame:
